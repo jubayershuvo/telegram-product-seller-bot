@@ -40,7 +40,7 @@ export function registerTextRouter(bot: Telegraf<BotContext>) {
       case 'awaiting_product_edit':
         return handleProductInput(ctx, st.name, text);
       case 'awaiting_product_file':
-        return ctx.reply('📥 Please send the .xlsx or .csv <b>file</b> now (or /cancel).', { parse_mode: 'HTML' });
+        return ctx.reply('📥 Please send the .xlsx or .csv <b>file</b> now (or /cancel).', { parse_mode: 'HTML', link_preview_options: { is_disabled: true } });
       case 'awaiting_product_pick':
       case 'awaiting_header_choice':
         return ctx.reply('👆 Please use the buttons above to continue (or /cancel).');

@@ -3,7 +3,7 @@ import { BotContext } from './context';
 import { User } from '../models/User';
 import { Types } from 'mongoose';
 
-export const HTML = { parse_mode: 'HTML' as const };
+export const HTML = { parse_mode: 'HTML' as const, link_preview_options: { is_disabled: true } };
 
 export const esc = (s: string | number | undefined | null): string =>
   String(s ?? '').replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c] as string));
