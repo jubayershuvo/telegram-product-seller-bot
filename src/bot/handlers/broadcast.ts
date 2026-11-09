@@ -2,7 +2,7 @@ import { Markup, Telegraf } from 'telegraf';
 import { BotContext } from '../context';
 import { HTML, clearState, setState } from '../ui';
 import { adminOnly } from '../middlewares/auth';
-import { BroadcastStats, audienceInfo, cancelBroadcast, isBroadcastRunning, startBroadcast } from '../../services/broadcast';
+import { BroadcastStats, audienceInfo, cancelBroadcast, isBroadcastRunning, sendBroadcastContent, startBroadcast } from '../../services/broadcast';
 import { logger } from '../../utils/logger';
 import { safeError } from '../../utils/errors';
 
@@ -60,17 +60,17 @@ export function registerBroadcastHandlers(bot: Telegraf<BotContext>) {
     const st = ctx.dbUser?.state;
     const waiting = ctx.isAdmin && st?.name === 'awaiting_broadcast' && st.at && Date.now() - new Date(st.at).getTime() < STATE_TTL_MS;
     if (!waiting) return next();
-    const m = ctx.message as { text?: string; message_id: number };
+    const m = ctx.message as { text?: string; entities?: any[]; message_id: number };
     if (m.text?.startsWith('/')) return next(); // /cancel etc. keep working
 
     // preview = exactly what users will receive; also proves the message type can be copied
     try {
-      await ctx.telegram.copyMessage(ctx.chat.id, ctx.chat.id, m.message_id);
+      await sendBroadcastContent(ctx.telegram, ctx.chat.id, { chatId: ctx.chat.id, messageId: m.message_id, text: m.text, entities: m.entities });
     } catch {
       return ctx.reply('❌ That message type cannot be broadcast. Send text or a photo/video/document/audio/voice/GIF/sticker, or /cancel.');
     }
     const a = await audienceInfo();
-    await setState(ctx.dbUser._id, 'broadcast_confirm', { messageId: m.message_id });
+    await setState(ctx.dbUser._id, 'broadcast_confirm', { messageId: m.message_id, text: m.text ?? null, entities: m.entities ?? null });
     await ctx.reply(
       [
         '👆 <b>This is what users will receive.</b>',
@@ -120,7 +120,12 @@ export function registerBroadcastHandlers(bot: Telegraf<BotContext>) {
       const ok = await startBroadcast({
         telegram: ctx.telegram,
         adminId,
-        source: { chatId, messageId },
+        source: {
+          chatId,
+          messageId,
+          text: typeof st?.data?.text === 'string' ? st.data.text : undefined,
+          entities: Array.isArray(st?.data?.entities) ? st.data.entities : undefined,
+        },
         onProgress: (s) => edit(statsText(s, '📣 <b>Broadcasting…</b>')),
         onDone: async (s) => {
           const title = s.status === 'completed' ? '✅ <b>Broadcast finished</b>' : s.status === 'cancelled' ? '🛑 <b>Broadcast stopped</b>' : '⚠️ <b>Broadcast interrupted</b>';

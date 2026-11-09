@@ -19,6 +19,21 @@ const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 export interface BroadcastSource {
   chatId: number;
   messageId: number;
+  /** set for plain-text broadcasts: they are re-sent with link previews switched off (copyMessage cannot do that) */
+  text?: string;
+  entities?: any[];
+}
+
+/** Sends the broadcast content to one chat. Text goes out without a link preview; media is copied as it is. */
+export async function sendBroadcastContent(tg: Telegram, toChatId: number, src: BroadcastSource): Promise<void> {
+  if (src.text) {
+    await tg.sendMessage(toChatId, src.text, {
+      ...(src.entities?.length ? { entities: src.entities } : {}),
+      link_preview_options: { is_disabled: true },
+    } as any);
+    return;
+  }
+  await tg.copyMessage(toChatId, src.chatId, src.messageId);
 }
 
 export interface BroadcastStats {
@@ -62,7 +77,7 @@ async function sendOne(tg: Telegram, userId: number, src: BroadcastSource, job: 
     const wait = pause.until - Date.now();
     if (wait > 0) await sleep(wait);
     try {
-      await tg.copyMessage(userId, src.chatId, src.messageId);
+      await sendBroadcastContent(tg, userId, src);
       return 'ok';
     } catch (e) {
       const res = (e as any)?.response ?? {};
