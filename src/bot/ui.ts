@@ -10,7 +10,7 @@ export const esc = (s: string | number | undefined | null): string =>
 
 export const BTN = {
   balance: '💰 Balance',
-  buy: '🛒 Buy Emails',
+  buy: '🛒 Buy',
   recharge: '➕ Recharge',
   orders: '📦 My Orders',
   tx: '🧾 Transactions',

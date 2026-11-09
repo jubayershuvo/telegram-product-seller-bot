@@ -40,7 +40,7 @@ async function registerCommandMenus(bot) {
         .setMyCommands([
         { command: 'start', description: 'Start / main menu' },
         { command: 'balance', description: 'Wallet balance' },
-        { command: 'buy', description: 'Buy emails' },
+        { command: 'buy', description: 'Browse products & buy' },
         { command: 'recharge', description: 'Add money to wallet' },
         { command: 'orders', description: 'Purchase history' },
         { command: 'transactions', description: 'Wallet transactions' },
@@ -52,6 +52,8 @@ async function registerCommandMenus(bot) {
         await bot.telegram
             .setMyCommands([
             { command: 'admin', description: 'Admin command list' },
+            { command: 'products', description: 'Manage products & upload stock' },
+            { command: 'newproduct', description: 'Create a product' },
             { command: 'stats', description: 'Inventory & sales stats' },
             { command: 'recharge_on', description: 'Open recharge for all' },
             { command: 'recharge_off', description: 'Close recharge for all' },
@@ -65,13 +67,13 @@ async function registerCommandMenus(bot) {
             { command: 'removechannel', description: 'Remove required channel' },
             { command: 'settings_edit', description: 'Edit settings step by step' },
             { command: 'settings', description: 'Show all settings' },
-            { command: 'price', description: 'Show price' },
+            { command: 'price', description: 'Default price for new products' },
             { command: 'users', description: 'List users' },
             { command: 'allorders', description: 'All orders' },
             { command: 'alldeposits', description: 'All deposits' },
             { command: 'alltx', description: 'All transactions' },
             { command: 'balance', description: 'My wallet' },
-            { command: 'buy', description: 'Buy emails' },
+            { command: 'buy', description: 'Browse products & buy' },
         ], { scope: { type: 'chat', chat_id: id } })
             .catch(() => undefined);
     }

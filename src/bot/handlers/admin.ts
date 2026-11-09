@@ -1,7 +1,7 @@
-import axios from 'axios';
 import { Markup, Telegraf } from 'telegraf';
 import { BotContext } from '../context';
 import { registerAdminPanel, showPanel, showUserPicker } from './adminPanel';
+import { registerProductHandlers } from './products';
 import { HTML, clearState, commandArgs, editOrReply, esc, setState, shortId, userLabel } from '../ui';
 import { adminOnly } from '../middlewares/auth';
 import { env } from '../../config/env';
@@ -9,7 +9,7 @@ import { getSettings, setSetting, resetSetting } from '../../services/settings';
 import { parseSettingInput, crossCheck } from '../../services/settingsParser';
 import { SETTING_DEFAULTS, SETTING_DEFS, SettingDef } from '../../models/Setting';
 import { getStats } from '../../services/stats';
-import { importEmails } from '../../services/excel';
+import { statsText } from './adminPanel';
 import { creditWallet, debitWallet, newOpKey } from '../../services/wallet';
 import { User, UserDoc } from '../../models/User';
 import { Order } from '../../models/Order';
@@ -180,71 +180,13 @@ function registerSettingsEditor(bot: Telegraf<BotContext>) {
 export function registerAdminHandlers(bot: Telegraf<BotContext>) {
   bot.command('admin', adminOnly, showPanel);
   registerAdminPanel(bot);
+  registerProductHandlers(bot); // products, csv/xlsx upload
   registerSettingsEditor(bot);
-
-  // ---------- Excel upload ----------
-  bot.on('document', async (ctx) => {
-    if (!ctx.isAdmin) return ctx.reply('⛔ Only admins can upload files.');
-    const doc = ctx.message.document;
-    const name = doc.file_name ?? 'upload.xlsx';
-    if (!name.toLowerCase().endsWith('.xlsx')) return ctx.reply('❌ Please upload an .xlsx Excel file (Column A = emails).');
-    const { maxUploadMb } = await getSettings();
-    if ((doc.file_size ?? 0) > maxUploadMb * 1024 * 1024) return ctx.reply(`❌ File too large (max ${maxUploadMb} MB).`);
-
-    const wait = await ctx.reply('⏳ Importing emails…');
-    try {
-      const link = await ctx.telegram.getFileLink(doc.file_id);
-      const res = await axios.get<ArrayBuffer>(link.href, { responseType: 'arraybuffer', timeout: 120_000 });
-      const r = await importEmails(Buffer.from(res.data), name, ctx.from.id);
-      await ctx.reply(
-        [
-          `✅ <b>Import finished</b> — ${esc(name)}`,
-          '',
-          `Rows read: ${r.totalRows}`,
-          `➕ New emails added: <b>${r.inserted}</b>`,
-          `♻️ Already in database (skipped): ${r.duplicatesInDb}`,
-          `👯 Duplicates inside file: ${r.duplicatesInFile}`,
-          `🚫 Invalid rows: ${r.invalidRows}`,
-        ].join('\n'),
-        HTML,
-      );
-    } catch (e) {
-      if (e instanceof AppError) await ctx.reply(`❌ ${e.message}`);
-      else {
-        logger.error({ err: safeError(e) }, 'Import failed');
-        await ctx.reply('❌ Import failed. Check the logs.');
-      }
-    } finally {
-      await ctx.telegram.deleteMessage(wait.chat.id, wait.message_id).catch(() => undefined);
-    }
-  });
 
   // ---------- stats / settings ----------
   bot.command('stats', adminOnly, async (ctx) => {
     const [s, st] = await Promise.all([getStats(), getSettings()]);
-    await ctx.reply(
-      [
-        '📊 <b>Statistics</b>',
-        '',
-        `📧 Emails total: <b>${s.stock.total}</b>`,
-        `🟢 Available: <b>${s.stock.available}</b>`,
-        `🔴 Sold: <b>${s.stock.sold}</b>`,
-        `💵 Price: <b>${fmt(st.price)}</b>`,
-        '',
-        `👥 Users: ${s.users} (banned: ${s.banned})`,
-        `📥 Verified deposits: ${s.deposits.count} • ${fmt(s.deposits.sum)}`,
-        `🛍 Orders: ${s.sales.orders} • ${s.sales.emails} emails • ${fmt(s.sales.revenue)}`,
-      ].join('\n'),
-      HTML,
-    );
-  });
-
-  bot.command('price', adminOnly, async (ctx) => ctx.reply(`💵 Current price: <b>${fmt((await getSettings()).price)}</b> per email`, HTML));
-  bot.command('setprice', adminOnly, async (ctx) => {
-    const amt = parseAmount(commandArgs(ctx)[0] ?? '');
-    if (!amt) return ctx.reply('Usage: /setprice <amount>   e.g. /setprice 5.50');
-    await setSetting('price', amt);
-    await ctx.reply(`✅ Price updated to ${fmt(amt)} per email.`);
+    await ctx.reply(statsText(s), HTML);
   });
 
   bot.command('settings', adminOnly, async (ctx) => {
@@ -294,7 +236,7 @@ export function registerAdminHandlers(bot: Telegraf<BotContext>) {
     if (!list.length) return ctx.reply('No imports yet.');
     await ctx.reply(
       '📥 <b>Recent imports</b>\n\n' +
-        list.map((b) => `${fmtDate(b.createdAt)} • ${esc(b.fileName)}\n+${b.inserted} new, ${b.duplicatesInDb} existing, ${b.duplicatesInFile} dup, ${b.invalidRows} invalid`).join('\n\n'),
+        list.map((b) => `${fmtDate(b.createdAt)} • ${esc(b.fileName)}${b.productName ? ` → <b>${esc(b.productName)}</b>` : ''}\n+${b.inserted} new, ${b.duplicatesInDb} existing, ${b.duplicatesInFile} dup`).join('\n\n'),
       HTML,
     );
   });
@@ -326,7 +268,7 @@ export function registerAdminHandlers(bot: Telegraf<BotContext>) {
         `Orders: ${ordersCount}`,
         '',
         '<b>Last orders</b>',
-        ...(orders.map((o) => `#${shortId(o._id)} • ${o.quantity} • ${fmt(o.total)} • ${fmtDate(o.createdAt)}`) || []),
+        ...(orders.map((o) => `#${shortId(o._id)} • ${esc(o.productName)} × ${o.quantity} • ${fmt(o.total)} • ${fmtDate(o.createdAt)}`) || []),
         '',
         '<b>Last deposits</b>',
         ...(deps.map((d) => `${d.status} • ${d.method} • <code>${esc(d.trxId)}</code> • ${fmt(d.verifiedAmount ?? d.claimedAmount)}`) || []),
@@ -378,7 +320,7 @@ export function registerAdminHandlers(bot: Telegraf<BotContext>) {
       Order.find().sort({ createdAt: -1 }).skip((page - 1) * PAGE).limit(PAGE).lean(),
       Order.countDocuments(),
     ]);
-    const lines = list.map((o) => `#${shortId(o._id)} • <code>${o.telegramId}</code> • ${o.quantity} × ${fmt(o.unitPrice)} = <b>${fmt(o.total)}</b> • ${o.status}\n${fmtDate(o.createdAt)}`);
+    const lines = list.map((o) => `#${shortId(o._id)} • <code>${o.telegramId}</code> • ${esc(o.productName)} • ${o.quantity} × ${fmt(o.unitPrice)} = <b>${fmt(o.total)}</b> • ${o.status}\n${fmtDate(o.createdAt)}`);
     await ctx.reply(`🛍 <b>Orders</b> ${count} • page ${page}\n\n${lines.join('\n\n') || '-'}`, HTML);
   });
 

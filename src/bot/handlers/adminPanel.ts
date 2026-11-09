@@ -14,7 +14,6 @@ import { User } from '../../models/User';
 import { Order } from '../../models/Order';
 import { Deposit } from '../../models/Deposit';
 import { Transaction } from '../../models/Transaction';
-import { ImportBatch } from '../../models/ImportBatch';
 import { fmt, fmtDate, fmtSigned, parseAmount, round2 } from '../../utils/money';
 
 type Btn = ReturnType<typeof Markup.button.callback>;
@@ -27,18 +26,19 @@ export const HELP = `<b>🛠 Admin commands</b>
 Tip: /admin opens the button panel, no typing needed.
 
 <b>Inventory</b>
-Upload an <b>.xlsx</b> file (emails in Column A) to import
-/stats – inventory, users, sales, deposits
+/products – create / edit products, upload stock
+/newproduct – create a product
+Send an <b>.xlsx</b> or <b>.csv</b> file to the bot → choose the product → rows become sellable items
+/stats – inventory per product, users, sales, deposits
 /imports – recent imports
 
 <b>Pricing &amp; settings</b>
-/price – show price
-/setprice &lt;amount&gt;
+Prices are edited per product in /products
 /settings_edit – edit settings step by step (pick category → pick setting → send value)
 /settings – show all settings (saved in the database)
 /set &lt;key&gt; &lt;value&gt; – change a setting (use <code>-</code> as value to clear text/list settings)
 /resetsetting &lt;key&gt; – restore the default value
-Keys: price, maxqty, rechargeenabled, rechargescheduleenabled, rechargeopentime, rechargeclosetime, bkash, nagad, minrecharge, maxrecharge, rechargepresets, currencysymbol, timezone, support, maxuploadmb, forcejoinenabled, trxidregex, maxfailedtrxperhour (see /settings)
+Keys: maxqty, rechargeenabled, rechargescheduleenabled, rechargeopentime, rechargeclosetime, bkash, nagad, minrecharge, maxrecharge, rechargepresets, currencysymbol, timezone, support, maxuploadmb, forcejoinenabled, trxidregex, maxfailedtrxperhour (see /settings)
 
 <b>Channels &amp; broadcast</b>
 /channels – required channels (add / remove with buttons; also in ⚙️ Settings)
@@ -77,8 +77,8 @@ export async function showPanel(ctx: BotContext) {
     [
       '🛠 <b>Admin panel</b>',
       '',
-      `📦 In stock: <b>${st.stock.available}</b> / ${st.stock.total}   💵 Price: <b>${fmt(s.price)}</b>`,
-      `👥 Users: <b>${st.users}</b>   🛍 Sold: <b>${st.sales.emails}</b> emails`,
+      `🗂 Products: <b>${st.perProduct.length}</b>   📦 In stock: <b>${st.stock.available}</b> / ${st.stock.total}`,
+      `👥 Users: <b>${st.users}</b>   🛍 Sold: <b>${st.sales.items}</b> items`,
       `💳 Recharge: ${describeRecharge(s)}`,
       '',
       'Choose an action 👇',
@@ -90,31 +90,38 @@ export async function showPanel(ctx: BotContext) {
       [cb('💰 Add / Deduct balance', 'ab:p:0')],
       [cb('📊 Stats', 'ap:stats'), cb('👥 Users', 'ab:p:0')],
       [cb('🛍 Orders', 'ap:o:0'), cb('💳 Deposits', 'ap:d:0')],
-      [cb('🧾 Transactions', 'ap:t:0'), cb('📥 Import emails', 'ap:imp')],
+      [cb('🧾 Transactions', 'ap:t:0'), cb('🗂 Products', 'pr:l:0')],
       [cb('📣 Broadcast', 'bc:start'), cb('📢 Channels', 'fc:home')],
       [cb('⚙️ Settings', 'se:home'), cb('📖 Commands', 'ap:help')],
     ]),
   );
 }
 
-async function showStatsScreen(ctx: BotContext) {
-  const [s, st] = await Promise.all([getStats(), getSettings()]);
-  await editOrReply(
-    ctx,
-    [
-      '📊 <b>Statistics</b>',
-      '',
-      `📧 Emails total: <b>${s.stock.total}</b>`,
-      `🟢 Available: <b>${s.stock.available}</b>`,
-      `🔴 Sold: <b>${s.stock.sold}</b>`,
-      `💵 Price: <b>${fmt(st.price)}</b>`,
-      '',
-      `👥 Users: ${s.users} (banned: ${s.banned})`,
-      `📥 Verified deposits: ${s.deposits.count} • ${fmt(s.deposits.sum)}`,
-      `🛍 Orders: ${s.sales.orders} • ${s.sales.emails} emails • ${fmt(s.sales.revenue)}`,
-    ].join('\n'),
-    Markup.inlineKeyboard([[cb('🔄 Refresh', 'ap:stats')], panelBack]),
+export function statsText(s: Awaited<ReturnType<typeof getStats>>): string {
+  const lines = [
+    '📊 <b>Statistics</b>',
+    '',
+    `📦 Items total: <b>${s.stock.total}</b>  🟢 Available: <b>${s.stock.available}</b>  🔴 Sold: <b>${s.stock.sold}</b>`,
+  ];
+  if (s.perProduct.length) {
+    lines.push('', '<b>Products</b>');
+    for (const p of s.perProduct.slice(0, 25)) {
+      lines.push(`${p.active ? '🟢' : '⚪'} ${esc(p.name)} • ${fmt(p.price)} • ${p.available} left / ${p.sold} sold`);
+    }
+    if (s.perProduct.length > 25) lines.push(`… and ${s.perProduct.length - 25} more`);
+  }
+  lines.push(
+    '',
+    `👥 Users: ${s.users} (banned: ${s.banned})`,
+    `📥 Verified deposits: ${s.deposits.count} • ${fmt(s.deposits.sum)}`,
+    `🛍 Orders: ${s.sales.orders} • ${s.sales.items} items • ${fmt(s.sales.revenue)}`,
   );
+  return lines.join('\n');
+}
+
+async function showStatsScreen(ctx: BotContext) {
+  const s = await getStats();
+  await editOrReply(ctx, statsText(s), Markup.inlineKeyboard([[cb('🔄 Refresh', 'ap:stats')], panelBack]));
 }
 
 function pager(prefix: string, page: number, count: number): Btn[] {
@@ -129,7 +136,7 @@ async function showOrdersScreen(ctx: BotContext, page: number) {
     Order.find().sort({ createdAt: -1 }).skip(page * PAGE).limit(PAGE).lean(),
     Order.countDocuments(),
   ]);
-  const lines = list.map((o) => `#${shortId(o._id)} • <code>${o.telegramId}</code> • ${o.quantity} × ${fmt(o.unitPrice)} = <b>${fmt(o.total)}</b> • ${o.status}\n${fmtDate(o.createdAt)}`);
+  const lines = list.map((o) => `#${shortId(o._id)} • <code>${o.telegramId}</code> • ${esc(o.productName)} • ${o.quantity} × ${fmt(o.unitPrice)} = <b>${fmt(o.total)}</b> • ${o.status}\n${fmtDate(o.createdAt)}`);
   const rows = [pager('ap:o', page, count), panelBack].filter((r) => r.length);
   await editOrReply(ctx, `🛍 <b>Orders</b> (${count}) • page ${page + 1}\n\n${lines.join('\n\n') || '-'}`, Markup.inlineKeyboard(rows));
 }
@@ -155,24 +162,6 @@ async function showTxScreen(ctx: BotContext, page: number) {
   const lines = list.map((t) => `<code>${t.telegramId}</code> • ${t.type} • <b>${fmtSigned(t.amount)}</b> • bal ${fmt(t.balanceAfter)}\n${fmtDate(t.createdAt)}`);
   const rows = [pager('ap:t', page, count), panelBack].filter((r) => r.length);
   await editOrReply(ctx, `🧾 <b>Transactions</b> (${count}) • page ${page + 1}\n\n${lines.join('\n\n') || '-'}`, Markup.inlineKeyboard(rows));
-}
-
-async function showImportInfo(ctx: BotContext) {
-  const [s, list] = await Promise.all([getSettings(), ImportBatch.find().sort({ createdAt: -1 }).limit(5).lean()]);
-  const recent = list.map((b) => `${fmtDate(b.createdAt)} • ${esc(b.fileName)}\n+${b.inserted} new, ${b.duplicatesInDb} existing, ${b.duplicatesInFile} dup`);
-  await editOrReply(
-    ctx,
-    [
-      '📥 <b>Import emails</b>',
-      '',
-      '1. Prepare an <b>.xlsx</b> file: emails in <b>Column A</b>, one per row',
-      `2. Send it to this chat as a <b>file</b> (max ${s.maxUploadMb} MB)`,
-      '3. The bot imports it and shows a report',
-      '',
-      recent.length ? `<b>Recent imports</b>\n${recent.join('\n\n')}` : 'No imports yet.',
-    ].join('\n'),
-    Markup.inlineKeyboard([panelBack]),
-  );
 }
 
 // =====================================================================
@@ -414,7 +403,6 @@ export function registerAdminPanel(bot: Telegraf<BotContext>) {
 
   act('ap:home', showPanel);
   act('ap:stats', showStatsScreen);
-  act('ap:imp', showImportInfo);
   act('ap:help', (ctx) => editOrReply(ctx, HELP, Markup.inlineKeyboard([panelBack])));
   act(/^ap:o:(\d+)$/, (ctx) => showOrdersScreen(ctx, parseInt(ctx.match[1], 10)));
   act(/^ap:d:(\d+)$/, (ctx) => showDepositsScreen(ctx, parseInt(ctx.match[1], 10)));

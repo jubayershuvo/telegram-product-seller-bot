@@ -2,6 +2,7 @@ import { env } from './config/env';
 import { connectDb, disconnectDb } from './config/db';
 import { createBot, registerCommandMenus } from './bot';
 import { recoverStale } from './services/recovery';
+import { migrateLegacyEmails } from './services/migrateLegacy';
 import { seedDefaults, loadSettings } from './services/settings';
 import { logger } from './utils/logger';
 import { safeError } from './utils/errors';
@@ -9,6 +10,7 @@ import { safeError } from './utils/errors';
 async function main() {
   await connectDb();
   await seedDefaults(); // inserts any missing setting with its default from models/Setting.ts
+  await migrateLegacyEmails(); // one-time: old single-product `emails` -> product "Emails"
   const settingsTimer = setInterval(() => void loadSettings().catch(() => undefined), 30_000);
   settingsTimer.unref();
   const bot = createBot();

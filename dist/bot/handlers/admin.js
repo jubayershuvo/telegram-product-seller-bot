@@ -1,13 +1,10 @@
 "use strict";
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.handleSettingValueInput = handleSettingValueInput;
 exports.registerAdminHandlers = registerAdminHandlers;
-const axios_1 = __importDefault(require("axios"));
 const telegraf_1 = require("telegraf");
 const adminPanel_1 = require("./adminPanel");
+const products_1 = require("./products");
 const ui_1 = require("../ui");
 const auth_1 = require("../middlewares/auth");
 const env_1 = require("../../config/env");
@@ -15,16 +12,14 @@ const settings_1 = require("../../services/settings");
 const settingsParser_1 = require("../../services/settingsParser");
 const Setting_1 = require("../../models/Setting");
 const stats_1 = require("../../services/stats");
-const excel_1 = require("../../services/excel");
+const adminPanel_2 = require("./adminPanel");
 const wallet_1 = require("../../services/wallet");
 const User_1 = require("../../models/User");
 const Order_1 = require("../../models/Order");
 const Deposit_1 = require("../../models/Deposit");
 const Transaction_1 = require("../../models/Transaction");
 const ImportBatch_1 = require("../../models/ImportBatch");
-const errors_1 = require("../../utils/errors");
 const money_1 = require("../../utils/money");
-const logger_1 = require("../../utils/logger");
 const PAGE = 10;
 const pageArg = (a) => Math.max(1, parseInt(a[0] ?? '1', 10) || 1);
 const ALIASES = {
@@ -192,68 +187,20 @@ function registerSettingsEditor(bot) {
 function registerAdminHandlers(bot) {
     bot.command('admin', auth_1.adminOnly, adminPanel_1.showPanel);
     (0, adminPanel_1.registerAdminPanel)(bot);
+    (0, products_1.registerProductHandlers)(bot); // products, csv/xlsx upload
     registerSettingsEditor(bot);
-    // ---------- Excel upload ----------
-    bot.on('document', async (ctx) => {
-        if (!ctx.isAdmin)
-            return ctx.reply('⛔ Only admins can upload files.');
-        const doc = ctx.message.document;
-        const name = doc.file_name ?? 'upload.xlsx';
-        if (!name.toLowerCase().endsWith('.xlsx'))
-            return ctx.reply('❌ Please upload an .xlsx Excel file (Column A = emails).');
-        const { maxUploadMb } = await (0, settings_1.getSettings)();
-        if ((doc.file_size ?? 0) > maxUploadMb * 1024 * 1024)
-            return ctx.reply(`❌ File too large (max ${maxUploadMb} MB).`);
-        const wait = await ctx.reply('⏳ Importing emails…');
-        try {
-            const link = await ctx.telegram.getFileLink(doc.file_id);
-            const res = await axios_1.default.get(link.href, { responseType: 'arraybuffer', timeout: 120_000 });
-            const r = await (0, excel_1.importEmails)(Buffer.from(res.data), name, ctx.from.id);
-            await ctx.reply([
-                `✅ <b>Import finished</b> — ${(0, ui_1.esc)(name)}`,
-                '',
-                `Rows read: ${r.totalRows}`,
-                `➕ New emails added: <b>${r.inserted}</b>`,
-                `♻️ Already in database (skipped): ${r.duplicatesInDb}`,
-                `👯 Duplicates inside file: ${r.duplicatesInFile}`,
-                `🚫 Invalid rows: ${r.invalidRows}`,
-            ].join('\n'), ui_1.HTML);
-        }
-        catch (e) {
-            if (e instanceof errors_1.AppError)
-                await ctx.reply(`❌ ${e.message}`);
-            else {
-                logger_1.logger.error({ err: (0, errors_1.safeError)(e) }, 'Import failed');
-                await ctx.reply('❌ Import failed. Check the logs.');
-            }
-        }
-        finally {
-            await ctx.telegram.deleteMessage(wait.chat.id, wait.message_id).catch(() => undefined);
-        }
-    });
     // ---------- stats / settings ----------
     bot.command('stats', auth_1.adminOnly, async (ctx) => {
         const [s, st] = await Promise.all([(0, stats_1.getStats)(), (0, settings_1.getSettings)()]);
-        await ctx.reply([
-            '📊 <b>Statistics</b>',
-            '',
-            `📧 Emails total: <b>${s.stock.total}</b>`,
-            `🟢 Available: <b>${s.stock.available}</b>`,
-            `🔴 Sold: <b>${s.stock.sold}</b>`,
-            `💵 Price: <b>${(0, money_1.fmt)(st.price)}</b>`,
-            '',
-            `👥 Users: ${s.users} (banned: ${s.banned})`,
-            `📥 Verified deposits: ${s.deposits.count} • ${(0, money_1.fmt)(s.deposits.sum)}`,
-            `🛍 Orders: ${s.sales.orders} • ${s.sales.emails} emails • ${(0, money_1.fmt)(s.sales.revenue)}`,
-        ].join('\n'), ui_1.HTML);
+        await ctx.reply((0, adminPanel_2.statsText)(s), ui_1.HTML);
     });
-    bot.command('price', auth_1.adminOnly, async (ctx) => ctx.reply(`💵 Current price: <b>${(0, money_1.fmt)((await (0, settings_1.getSettings)()).price)}</b> per email`, ui_1.HTML));
+    bot.command('price', auth_1.adminOnly, async (ctx) => ctx.reply(`💵 Default price for new products: <b>${(0, money_1.fmt)((await (0, settings_1.getSettings)()).price)}</b>\nEach product has its own price: /products`, ui_1.HTML));
     bot.command('setprice', auth_1.adminOnly, async (ctx) => {
         const amt = (0, money_1.parseAmount)((0, ui_1.commandArgs)(ctx)[0] ?? '');
         if (!amt)
-            return ctx.reply('Usage: /setprice <amount>   e.g. /setprice 5.50');
+            return ctx.reply('Usage: /setprice <amount>   (default price for NEW products) e.g. /setprice 5.50');
         await (0, settings_1.setSetting)('price', amt);
-        await ctx.reply(`✅ Price updated to ${(0, money_1.fmt)(amt)} per email.`);
+        await ctx.reply(`✅ Default price for new products set to ${(0, money_1.fmt)(amt)}. (Change a product's own price in /products.)`);
     });
     bot.command('settings', auth_1.adminOnly, async (ctx) => {
         const s = await (0, settings_1.getSettings)();
@@ -302,7 +249,7 @@ function registerAdminHandlers(bot) {
         if (!list.length)
             return ctx.reply('No imports yet.');
         await ctx.reply('📥 <b>Recent imports</b>\n\n' +
-            list.map((b) => `${(0, money_1.fmtDate)(b.createdAt)} • ${(0, ui_1.esc)(b.fileName)}\n+${b.inserted} new, ${b.duplicatesInDb} existing, ${b.duplicatesInFile} dup, ${b.invalidRows} invalid`).join('\n\n'), ui_1.HTML);
+            list.map((b) => `${(0, money_1.fmtDate)(b.createdAt)} • ${(0, ui_1.esc)(b.fileName)}${b.productName ? ` → <b>${(0, ui_1.esc)(b.productName)}</b>` : ''}\n+${b.inserted} new, ${b.duplicatesInDb} existing, ${b.duplicatesInFile} dup`).join('\n\n'), ui_1.HTML);
     });
     // ---------- users ----------
     bot.command('users', auth_1.adminOnly, async (ctx) => {
@@ -330,7 +277,7 @@ function registerAdminHandlers(bot) {
             `Orders: ${ordersCount}`,
             '',
             '<b>Last orders</b>',
-            ...(orders.map((o) => `#${(0, ui_1.shortId)(o._id)} • ${o.quantity} • ${(0, money_1.fmt)(o.total)} • ${(0, money_1.fmtDate)(o.createdAt)}`) || []),
+            ...(orders.map((o) => `#${(0, ui_1.shortId)(o._id)} • ${(0, ui_1.esc)(o.productName)} × ${o.quantity} • ${(0, money_1.fmt)(o.total)} • ${(0, money_1.fmtDate)(o.createdAt)}`) || []),
             '',
             '<b>Last deposits</b>',
             ...(deps.map((d) => `${d.status} • ${d.method} • <code>${(0, ui_1.esc)(d.trxId)}</code> • ${(0, money_1.fmt)(d.verifiedAmount ?? d.claimedAmount)}`) || []),
@@ -382,7 +329,7 @@ function registerAdminHandlers(bot) {
             Order_1.Order.find().sort({ createdAt: -1 }).skip((page - 1) * PAGE).limit(PAGE).lean(),
             Order_1.Order.countDocuments(),
         ]);
-        const lines = list.map((o) => `#${(0, ui_1.shortId)(o._id)} • <code>${o.telegramId}</code> • ${o.quantity} × ${(0, money_1.fmt)(o.unitPrice)} = <b>${(0, money_1.fmt)(o.total)}</b> • ${o.status}\n${(0, money_1.fmtDate)(o.createdAt)}`);
+        const lines = list.map((o) => `#${(0, ui_1.shortId)(o._id)} • <code>${o.telegramId}</code> • ${(0, ui_1.esc)(o.productName)} • ${o.quantity} × ${(0, money_1.fmt)(o.unitPrice)} = <b>${(0, money_1.fmt)(o.total)}</b> • ${o.status}\n${(0, money_1.fmtDate)(o.createdAt)}`);
         await ctx.reply(`🛍 <b>Orders</b> ${count} • page ${page}\n\n${lines.join('\n\n') || '-'}`, ui_1.HTML);
     });
     bot.command('alldeposits', auth_1.adminOnly, async (ctx) => {

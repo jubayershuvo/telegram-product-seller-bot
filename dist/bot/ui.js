@@ -13,7 +13,7 @@ const esc = (s) => String(s ?? '').replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<'
 exports.esc = esc;
 exports.BTN = {
     balance: '💰 Balance',
-    buy: '🛒 Buy Emails',
+    buy: '🛒 Buy',
     recharge: '➕ Recharge',
     orders: '📦 My Orders',
     tx: '🧾 Transactions',

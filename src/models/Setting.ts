@@ -14,9 +14,9 @@ export interface SettingsShape {
   // ----- shop -----
   currencySymbol: string;
   timezone: string;
-  /** price per email */
+  /** default price pre-filled when creating a product (every product has its own price) */
   price: number;
-  /** max emails per order. 0 = no cap: the limit is simply what is in stock */
+  /** max items per order. 0 = no cap: the limit is simply what is in stock */
   maxQty: number;
   support: string;
   // ----- recharge -----
@@ -96,8 +96,7 @@ export interface SettingDef {
 export const SETTING_DEFS: SettingDef[] = [
   { key: 'currencySymbol', type: 'string', group: 'Shop', hint: 'e.g. ৳' },
   { key: 'timezone', type: 'timezone', group: 'Shop', hint: 'IANA name, e.g. Asia/Dhaka' },
-  { key: 'price', type: 'money', group: 'Shop', hint: 'price per email' },
-  { key: 'maxQty', type: 'int', group: 'Shop', hint: 'max emails per order, 0 = limited only by stock', min: 0, max: 10_000_000 },
+  { key: 'maxQty', type: 'int', group: 'Shop', hint: 'max items per order, 0 = limited only by stock', min: 0, max: 10_000_000 },
   { key: 'support', type: 'string', group: 'Shop', hint: '@username or link' },
 
   { key: 'rechargeEnabled', type: 'bool', group: 'Recharge', hint: 'master switch: true = recharge open, false = closed for all users' },
@@ -112,7 +111,7 @@ export const SETTING_DEFS: SettingDef[] = [
 
   { key: 'forceJoinEnabled', type: 'bool', group: 'Force Join', hint: 'true = users must join all required channels before using the bot' },
 
-  { key: 'maxUploadMb', type: 'int', group: 'Uploads', hint: 'max .xlsx size in MB (Telegram limit 20)', min: 1, max: 20 },
+  { key: 'maxUploadMb', type: 'int', group: 'Uploads', hint: 'max .xlsx / .csv upload size in MB (Telegram limit 20)', min: 1, max: 20 },
 
   { key: 'trxIdRegex', type: 'regex', group: 'TrxID', hint: 'regular expression a TrxID must match' },
   { key: 'maxFailedTrxPerHour', type: 'int', group: 'TrxID', hint: 'failed attempts per user per hour', min: 1, max: 1000 },

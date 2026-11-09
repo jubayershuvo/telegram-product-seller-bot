@@ -6,6 +6,7 @@ const admin_1 = require("./admin");
 const adminPanel_1 = require("./adminPanel");
 const recharge_1 = require("./recharge");
 const channels_1 = require("./channels");
+const products_1 = require("./products");
 const ui_1 = require("../ui");
 const STATE_TTL_MS = 30 * 60_000;
 /** Routes free-text messages according to the conversation state persisted in MongoDB. */
@@ -32,6 +33,15 @@ function registerTextRouter(bot) {
                 return (0, adminPanel_1.handleUserSearchInput)(ctx, text);
             case 'awaiting_recharge_hours':
                 return (0, adminPanel_1.handleRechargeHoursInput)(ctx, text);
+            case 'awaiting_product_name':
+            case 'awaiting_product_price':
+            case 'awaiting_product_edit':
+                return (0, products_1.handleProductInput)(ctx, st.name, text);
+            case 'awaiting_product_file':
+                return ctx.reply('📥 Please send the .xlsx or .csv <b>file</b> now (or /cancel).', { parse_mode: 'HTML' });
+            case 'awaiting_product_pick':
+            case 'awaiting_header_choice':
+                return ctx.reply('👆 Please use the buttons above to continue (or /cancel).');
             case 'awaiting_channel':
                 return (0, channels_1.handleChannelInput)(ctx, text);
             case 'awaiting_broadcast':

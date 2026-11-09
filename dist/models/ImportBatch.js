@@ -4,9 +4,10 @@ exports.ImportBatch = void 0;
 const mongoose_1 = require("mongoose");
 const schema = new mongoose_1.Schema({
     adminTelegramId: { type: Number, required: true },
+    productId: { type: mongoose_1.Schema.Types.ObjectId, ref: 'Product', index: true },
+    productName: String,
     fileName: { type: String, required: true },
     totalRows: Number,
-    invalidRows: Number,
     duplicatesInFile: Number,
     duplicatesInDb: Number,
     inserted: Number,

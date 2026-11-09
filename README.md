@@ -1,23 +1,28 @@
-# Telegram Email Selling Bot
+# Telegram Multi-Product Selling Bot
 
-Node.js + TypeScript + Telegraf + MongoDB (Mongoose) + ExcelJS.
+Node.js + TypeScript + Telegraf + MongoDB (Mongoose) + ExcelJS. Sells **many products**; each product's stock comes from uploaded `.xlsx` / `.csv` files.
 Everything (admin and users) happens **inside Telegram**. There is no web dashboard.
 
 ## Features
 
-**Admin** — `/admin` opens a button panel (stats, users, balance, orders, deposits, transactions, import, settings); admins also get a 🛠 Admin Panel button in the main menu
-- **Add / Deduct balance** is guided: pick a user from the list (or search) → ➕ Credit / ➖ Debit → amount (quick buttons or typed) → confirm
-- Upload an `.xlsx` file (Column A = one email per row) straight to the bot → imported to MongoDB, duplicates skipped, invalid rows reported
-- `/stats` total / available / sold emails, users, deposits, revenue
-- `/settings_edit` (step by step: category → setting → value), `/settings`, `/set <key> <value>`, `/resetsetting <key>`, `/setprice`: shop settings are stored in MongoDB and editable from Telegram
-- `/users`, `/user`, `/allorders`, `/alldeposits`, `/alltx`, `/imports`
-- `/addbalance`, `/deductbalance`, `/ban`, `/unban`
+**Admin** — `/admin` opens a button panel; **🗂 Products** is the product manager
+- **Create a product first** (name → price), and **edit it any time**: ✏️ name, 💵 price, 📝 description, 👁 hide/show in the shop, 📄 delivery format (XLSX/CSV), 🧹 clear unsold items, 🗑 delete (only if it never sold)
+- **Upload stock into a product** — two ways, both work:
+  1. open the product → **📥 Upload file** → send the file, or
+  2. just send an `.xlsx` / `.csv` file to the bot, then **pick the product** (or create a new one) from the buttons
+- **The first file defines the product's file structure** (all columns, and whether row 1 is a header — the bot asks you). Later uploads must have the **same structure** (same column count, same header names) or they are rejected; buyers always receive a file with exactly that layout
+- One row = one sellable item. Rows are de-duplicated per product (a row that was already added or sold is skipped, so nothing can be sold twice)
+- `/stats` stock per product, users, deposits, revenue; `/products`, `/newproduct`, `/imports`
+- `/settings_edit`, `/settings`, `/set`, `/resetsetting`; `price` is now only the **default price pre-filled for new products**
+- `/users`, `/user`, `/allorders`, `/alldeposits`, `/alltx`, `/addbalance`, `/deductbalance`, `/ban`, `/unban`
 
 **Users**
-- `/start` registers automatically; wallet balance; buy emails by sending a custom quantity (1 – emails in stock) with a confirm step
-- Receives an `.xlsx` containing only the purchased emails in Column A
-- Order history (re-download any file), transaction history, recharge history
+- `/start` registers automatically; wallet balance
+- **🛒 Buy → pick a product → send a quantity (1 – in stock) → confirm** → the file with the purchased rows arrives instantly, in that product's structure and format (XLSX or CSV)
+- Order history (re-download any file — it is rebuilt with the structure the product had when you bought it), transaction history, recharge history
 - Recharge via bKash/Nagad: pick provider → pay → send TrxID → verified from synced SMS → wallet credited
+
+**Upgrading from the single-product version:** on first start the old `emails` collection is converted automatically into a product called **Emails** (1 column, no header, XLSX — exactly like before). Old orders keep working and can still be re-downloaded. The old collection is kept, renamed to `emails_migrated`.
 
 ## Force channel subscription
 
@@ -45,19 +50,21 @@ src/
   index.ts                    entrypoint (DB, bot launch, recovery job, graceful shutdown)
   config/      env.ts (secrets only)  db.ts
   lib/         payment-verifier.ts + bkash/nagad SMS extractors
-  models/      User Email Order Deposit Transaction ImportBatch Setting (defaults live here)
+  models/      User Product Item Order Deposit Transaction ImportBatch Setting (defaults live here)
   services/
     wallet.ts       atomic + idempotent credit/debit (ledger)
-    inventory.ts    atomic email reservation / release
-    purchase.ts     purchase flow + rollback
+    catalog.ts      products, stock per product, structure-checked import
+    inventory.ts    atomic per-product item reservation / release
+    purchase.ts     purchase flow (one product per order) + rollback
+    migrateLegacy.ts one-time emails -> product migration
     deposit.ts      TrxID claim -> verify -> credit
-    excel.ts        import (read) and export (write) with ExcelJS
+    dataFile.ts     read .xlsx/.csv (ExcelJS / own CSV parser) and build delivery files
     settings.ts (DB-backed, cached)  settingsParser.ts  stats.ts  userLock.ts  recovery.ts
     rechargeGate.ts admin on/off + daily schedule
   bot/
     index.ts  context.ts  ui.ts  notify.ts
     middlewares/    auth.ts (load user, ban, admin check)  rateLimit.ts
-    handlers/       shop.ts  recharge.ts  admin.ts  text.ts
+    handlers/       shop.ts  products.ts  recharge.ts  admin.ts  text.ts
 ```
 
 ## Setup on Windows
@@ -104,11 +111,13 @@ Use MongoDB Atlas or install MongoDB on the server (bind to localhost, enable au
 
 **Webhook mode (optional):** set `WEBHOOK_DOMAIN=bot.example.com` and put Nginx/Caddy with HTTPS in front of `PORT` (the webhook secret is derived from the bot token automatically). Polling (default) needs no domain and is fine for most shops.
 
-## Excel import format
+## File import format (.xlsx / .csv)
 
-- First worksheet, **Column A only**, one email per row. An optional header row ("email") is skipped.
-- Emails are lower-cased and validated; duplicates inside the file and already in the database are skipped. Already-sold addresses can never be re-added as available.
-- Upload as a *document* (paperclip → File) as `.xlsx`, max `maxUploadMb` (setting) (Telegram bots can download up to 20 MB).
+- `.xlsx`: first worksheet that has data, **all columns**. `.csv`: comma, semicolon or tab separated, UTF-8 (BOM ok). Old `.xls` is not supported (Save As .xlsx).
+- A header row is optional. For a product's **first** upload the bot shows the first rows and asks "is row 1 a header?".
+- Every non-empty row is one item. Cell values are stored as text, so leading zeros and long numbers are kept as-is.
+- Duplicates (identical row, case-insensitive) inside a file or already in that product are skipped. The same row may exist in *different* products.
+- Upload as a *document* (paperclip → File), max `maxUploadMb` (Telegram bots can download up to 20 MB).
 
 ## Settings (database, editable by admins)
 
@@ -123,13 +132,12 @@ Everything else is a document in the `settings` collection. Defaults are defined
 | `/set <key> <value>` | change one (use `-` as value to clear text/list settings) |
 | `/resetsetting <key>` | restore the default from the model |
 
-Keys: `currencySymbol timezone price maxQty support bkashNumber nagadNumber rechargeEnabled rechargeScheduleEnabled rechargeOpenTime rechargeCloseTime minRecharge maxRecharge rechargePresets maxUploadMb trxIdRegex maxFailedTrxPerHour`
+Keys: `currencySymbol timezone price(default for new products) maxQty support bkashNumber nagadNumber rechargeEnabled rechargeScheduleEnabled rechargeOpenTime rechargeCloseTime minRecharge maxRecharge rechargePresets maxUploadMb trxIdRegex maxFailedTrxPerHour`
 (short aliases: `bkash`, `nagad`, `presets`).
 
-**Prices** can have up to 2 decimals (`/setprice 0.85`); totals are price × quantity rounded to 2 decimals (0.85 × 2 = 1.70), no floor or ceiling.
+**Prices** are per product (up to 2 decimals); totals are price × quantity rounded to 2 decimals (0.85 × 2 = 1.70). The price is frozen on the order, and if an admin changes it while a buyer is on the confirm screen, the purchase is stopped and the buyer sees the new price.
 
-**Buying limit:** users always type a custom quantity. The allowed range is `1 – emails currently in stock`.
-`maxQty` is an optional extra cap; `0` (default) means no cap.
+**Buying limit:** users send a custom quantity. The allowed range is `1 – items currently in stock for that product`. `maxQty` is an optional extra cap per order; `0` (default) means no cap.
 
 ## Recharge (SMS verification)
 
@@ -152,7 +160,7 @@ Rules: unknown TrxID → rejected (counts as a failed attempt); SMS service down
 
 ## How double-selling and fake recharges are prevented
 
-- `Email.address` has a **unique index**; each email is reserved with a per-document atomic update filtered on `status:'available'`, so two simultaneous buyers can never get the same address. (No replica set required, so it works on a plain local MongoDB.)
+- `Item` has a **unique index on (productId, row fingerprint)**; each item is reserved with a per-document atomic update filtered on `status:'available'`, so two simultaneous buyers can never get the same row. (No replica set required, so it works on a plain local MongoDB.)
 - Wallet changes use one atomic `findOneAndUpdate` with a `balance >= amount` guard and an **idempotency key** stored on the user, so a retry can never charge or credit twice and balances can't go negative.
 - A purchase that fails halfway releases its emails and refunds automatically; a background job (every 5 min and at startup) repairs anything a crash left in "processing".
 - `Deposit.trxId` has a **unique partial index**: one TrxID can only ever be claimed once; failed verifications release it so honest users can retry. Failed-attempt limit per user per hour (`maxFailedTrxPerHour` setting).
@@ -163,5 +171,5 @@ Rules: unknown TrxID → rejected (counts as a failed attempt); SMS service down
 
 - Never commit `.env`. Rotate the bot token in @BotFather if it leaks.
 - Logs never contain the bot token or raw HTTP error objects.
-- Back up MongoDB regularly (`mongodump`); the email inventory and balances are your business data.
-- Delivered emails stay linked to the order, so users can re-download from **My Orders**.
+- Back up MongoDB regularly (`mongodump`); the product inventory and balances are your business data.
+- Delivered items stay linked to the order, so users can re-download from **My Orders**.

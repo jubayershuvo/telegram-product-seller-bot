@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.HELP = void 0;
 exports.showPanel = showPanel;
+exports.statsText = statsText;
 exports.showUserPicker = showUserPicker;
 exports.handleBalanceAmountInput = handleBalanceAmountInput;
 exports.handleUserSearchInput = handleUserSearchInput;
@@ -22,7 +23,6 @@ const User_1 = require("../../models/User");
 const Order_1 = require("../../models/Order");
 const Deposit_1 = require("../../models/Deposit");
 const Transaction_1 = require("../../models/Transaction");
-const ImportBatch_1 = require("../../models/ImportBatch");
 const money_1 = require("../../utils/money");
 const cb = telegraf_1.Markup.button.callback;
 const PAGE = 8;
@@ -32,13 +32,15 @@ exports.HELP = `<b>🛠 Admin commands</b>
 Tip: /admin opens the button panel, no typing needed.
 
 <b>Inventory</b>
-Upload an <b>.xlsx</b> file (emails in Column A) to import
-/stats – inventory, users, sales, deposits
+/products – create / edit products, upload stock
+/newproduct – create a product
+Send an <b>.xlsx</b> or <b>.csv</b> file to the bot → choose the product → rows become sellable items
+/stats – inventory per product, users, sales, deposits
 /imports – recent imports
 
 <b>Pricing &amp; settings</b>
-/price – show price
-/setprice &lt;amount&gt;
+/price – default price for new products
+/setprice &lt;amount&gt; – change that default (each product has its own price in /products)
 /settings_edit – edit settings step by step (pick category → pick setting → send value)
 /settings – show all settings (saved in the database)
 /set &lt;key&gt; &lt;value&gt; – change a setting (use <code>-</code> as value to clear text/list settings)
@@ -79,8 +81,8 @@ async function showPanel(ctx) {
     await (0, ui_1.editOrReply)(ctx, [
         '🛠 <b>Admin panel</b>',
         '',
-        `📦 In stock: <b>${st.stock.available}</b> / ${st.stock.total}   💵 Price: <b>${(0, money_1.fmt)(s.price)}</b>`,
-        `👥 Users: <b>${st.users}</b>   🛍 Sold: <b>${st.sales.emails}</b> emails`,
+        `🗂 Products: <b>${st.perProduct.length}</b>   📦 In stock: <b>${st.stock.available}</b> / ${st.stock.total}`,
+        `👥 Users: <b>${st.users}</b>   🛍 Sold: <b>${st.sales.items}</b> items`,
         `💳 Recharge: ${(0, rechargeGate_1.describeRecharge)(s)}`,
         '',
         'Choose an action 👇',
@@ -91,25 +93,31 @@ async function showPanel(ctx) {
         [cb('💰 Add / Deduct balance', 'ab:p:0')],
         [cb('📊 Stats', 'ap:stats'), cb('👥 Users', 'ab:p:0')],
         [cb('🛍 Orders', 'ap:o:0'), cb('💳 Deposits', 'ap:d:0')],
-        [cb('🧾 Transactions', 'ap:t:0'), cb('📥 Import emails', 'ap:imp')],
+        [cb('🧾 Transactions', 'ap:t:0'), cb('🗂 Products', 'pr:l:0')],
         [cb('📣 Broadcast', 'bc:start'), cb('📢 Channels', 'fc:home')],
         [cb('⚙️ Settings', 'se:home'), cb('📖 Commands', 'ap:help')],
     ]));
 }
-async function showStatsScreen(ctx) {
-    const [s, st] = await Promise.all([(0, stats_1.getStats)(), (0, settings_1.getSettings)()]);
-    await (0, ui_1.editOrReply)(ctx, [
+function statsText(s) {
+    const lines = [
         '📊 <b>Statistics</b>',
         '',
-        `📧 Emails total: <b>${s.stock.total}</b>`,
-        `🟢 Available: <b>${s.stock.available}</b>`,
-        `🔴 Sold: <b>${s.stock.sold}</b>`,
-        `💵 Price: <b>${(0, money_1.fmt)(st.price)}</b>`,
-        '',
-        `👥 Users: ${s.users} (banned: ${s.banned})`,
-        `📥 Verified deposits: ${s.deposits.count} • ${(0, money_1.fmt)(s.deposits.sum)}`,
-        `🛍 Orders: ${s.sales.orders} • ${s.sales.emails} emails • ${(0, money_1.fmt)(s.sales.revenue)}`,
-    ].join('\n'), telegraf_1.Markup.inlineKeyboard([[cb('🔄 Refresh', 'ap:stats')], panelBack]));
+        `📦 Items total: <b>${s.stock.total}</b>  🟢 Available: <b>${s.stock.available}</b>  🔴 Sold: <b>${s.stock.sold}</b>`,
+    ];
+    if (s.perProduct.length) {
+        lines.push('', '<b>Products</b>');
+        for (const p of s.perProduct.slice(0, 25)) {
+            lines.push(`${p.active ? '🟢' : '⚪'} ${(0, ui_1.esc)(p.name)} • ${(0, money_1.fmt)(p.price)} • ${p.available} left / ${p.sold} sold`);
+        }
+        if (s.perProduct.length > 25)
+            lines.push(`… and ${s.perProduct.length - 25} more`);
+    }
+    lines.push('', `👥 Users: ${s.users} (banned: ${s.banned})`, `📥 Verified deposits: ${s.deposits.count} • ${(0, money_1.fmt)(s.deposits.sum)}`, `🛍 Orders: ${s.sales.orders} • ${s.sales.items} items • ${(0, money_1.fmt)(s.sales.revenue)}`);
+    return lines.join('\n');
+}
+async function showStatsScreen(ctx) {
+    const s = await (0, stats_1.getStats)();
+    await (0, ui_1.editOrReply)(ctx, statsText(s), telegraf_1.Markup.inlineKeyboard([[cb('🔄 Refresh', 'ap:stats')], panelBack]));
 }
 function pager(prefix, page, count) {
     const nav = [];
@@ -124,7 +132,7 @@ async function showOrdersScreen(ctx, page) {
         Order_1.Order.find().sort({ createdAt: -1 }).skip(page * PAGE).limit(PAGE).lean(),
         Order_1.Order.countDocuments(),
     ]);
-    const lines = list.map((o) => `#${(0, ui_1.shortId)(o._id)} • <code>${o.telegramId}</code> • ${o.quantity} × ${(0, money_1.fmt)(o.unitPrice)} = <b>${(0, money_1.fmt)(o.total)}</b> • ${o.status}\n${(0, money_1.fmtDate)(o.createdAt)}`);
+    const lines = list.map((o) => `#${(0, ui_1.shortId)(o._id)} • <code>${o.telegramId}</code> • ${(0, ui_1.esc)(o.productName)} • ${o.quantity} × ${(0, money_1.fmt)(o.unitPrice)} = <b>${(0, money_1.fmt)(o.total)}</b> • ${o.status}\n${(0, money_1.fmtDate)(o.createdAt)}`);
     const rows = [pager('ap:o', page, count), panelBack].filter((r) => r.length);
     await (0, ui_1.editOrReply)(ctx, `🛍 <b>Orders</b> (${count}) • page ${page + 1}\n\n${lines.join('\n\n') || '-'}`, telegraf_1.Markup.inlineKeyboard(rows));
 }
@@ -146,19 +154,6 @@ async function showTxScreen(ctx, page) {
     const lines = list.map((t) => `<code>${t.telegramId}</code> • ${t.type} • <b>${(0, money_1.fmtSigned)(t.amount)}</b> • bal ${(0, money_1.fmt)(t.balanceAfter)}\n${(0, money_1.fmtDate)(t.createdAt)}`);
     const rows = [pager('ap:t', page, count), panelBack].filter((r) => r.length);
     await (0, ui_1.editOrReply)(ctx, `🧾 <b>Transactions</b> (${count}) • page ${page + 1}\n\n${lines.join('\n\n') || '-'}`, telegraf_1.Markup.inlineKeyboard(rows));
-}
-async function showImportInfo(ctx) {
-    const [s, list] = await Promise.all([(0, settings_1.getSettings)(), ImportBatch_1.ImportBatch.find().sort({ createdAt: -1 }).limit(5).lean()]);
-    const recent = list.map((b) => `${(0, money_1.fmtDate)(b.createdAt)} • ${(0, ui_1.esc)(b.fileName)}\n+${b.inserted} new, ${b.duplicatesInDb} existing, ${b.duplicatesInFile} dup`);
-    await (0, ui_1.editOrReply)(ctx, [
-        '📥 <b>Import emails</b>',
-        '',
-        '1. Prepare an <b>.xlsx</b> file: emails in <b>Column A</b>, one per row',
-        `2. Send it to this chat as a <b>file</b> (max ${s.maxUploadMb} MB)`,
-        '3. The bot imports it and shows a report',
-        '',
-        recent.length ? `<b>Recent imports</b>\n${recent.join('\n\n')}` : 'No imports yet.',
-    ].join('\n'), telegraf_1.Markup.inlineKeyboard([panelBack]));
 }
 // =====================================================================
 //  Balance flow: pick user → Credit / Debit → amount → confirm
@@ -376,7 +371,6 @@ function registerAdminPanel(bot) {
     });
     act('ap:home', showPanel);
     act('ap:stats', showStatsScreen);
-    act('ap:imp', showImportInfo);
     act('ap:help', (ctx) => (0, ui_1.editOrReply)(ctx, exports.HELP, telegraf_1.Markup.inlineKeyboard([panelBack])));
     act(/^ap:o:(\d+)$/, (ctx) => showOrdersScreen(ctx, parseInt(ctx.match[1], 10)));
     act(/^ap:d:(\d+)$/, (ctx) => showDepositsScreen(ctx, parseInt(ctx.match[1], 10)));

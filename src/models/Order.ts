@@ -3,6 +3,12 @@ import { Schema, model, Types, HydratedDocument } from 'mongoose';
 export interface IOrder {
   userId: Types.ObjectId;
   telegramId: number;
+  productId?: Types.ObjectId;
+  /** snapshots, so editing / renaming the product later never changes old orders or their re-downloads */
+  productName: string;
+  columns: string[];
+  hasHeader: boolean;
+  format: 'xlsx' | 'csv';
   quantity: number;
   unitPrice: number;
   total: number;
@@ -17,6 +23,11 @@ const schema = new Schema<IOrder>(
   {
     userId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     telegramId: { type: Number, required: true },
+    productId: { type: Schema.Types.ObjectId, ref: 'Product', index: true },
+    productName: { type: String, default: 'Product' },
+    columns: { type: [String], default: [] },
+    hasHeader: { type: Boolean, default: false },
+    format: { type: String, enum: ['xlsx', 'csv'], default: 'xlsx' },
     quantity: { type: Number, required: true, min: 1 },
     unitPrice: { type: Number, required: true },
     total: { type: Number, required: true },

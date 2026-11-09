@@ -5,6 +5,7 @@ import { handleSettingValueInput } from './admin';
 import { handleBalanceAmountInput, handleRechargeHoursInput, handleUserSearchInput } from './adminPanel';
 import { handleTrxIdInput } from './recharge';
 import { handleChannelInput } from './channels';
+import { handleProductInput } from './products';
 import { clearState, mainMenu } from '../ui';
 
 const STATE_TTL_MS = 30 * 60_000;
@@ -33,6 +34,16 @@ export function registerTextRouter(bot: Telegraf<BotContext>) {
         return handleUserSearchInput(ctx, text);
       case 'awaiting_recharge_hours':
         return handleRechargeHoursInput(ctx, text);
+      case 'awaiting_product_name':
+      case 'awaiting_product_price':
+      case 'awaiting_product_desc':
+      case 'awaiting_product_edit':
+        return handleProductInput(ctx, st.name, text);
+      case 'awaiting_product_file':
+        return ctx.reply('📥 Please send the .xlsx or .csv <b>file</b> now (or /cancel).', { parse_mode: 'HTML' });
+      case 'awaiting_product_pick':
+      case 'awaiting_header_choice':
+        return ctx.reply('👆 Please use the buttons above to continue (or /cancel).');
       case 'awaiting_channel':
         return handleChannelInput(ctx, text);
       case 'awaiting_broadcast':
