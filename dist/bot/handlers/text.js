@@ -6,6 +6,7 @@ const admin_1 = require("./admin");
 const adminPanel_1 = require("./adminPanel");
 const recharge_1 = require("./recharge");
 const channels_1 = require("./channels");
+const logo_1 = require("./logo");
 const products_1 = require("./products");
 const ui_1 = require("../ui");
 const STATE_TTL_MS = 30 * 60_000;
@@ -49,6 +50,8 @@ function registerTextRouter(bot) {
                 // normally consumed by the broadcast listener; reaching here means the state is stale
                 await (0, ui_1.clearState)(ctx.dbUser._id);
                 return ctx.reply('Broadcast cancelled. Use /broadcast to start again.', (0, ui_1.mainMenu)(ctx.isAdmin));
+            case 'awaiting_shop_logo':
+                return (0, logo_1.handleLogoText)(ctx, text);
             case 'awaiting_setting_value':
                 return (0, admin_1.handleSettingValueInput)(ctx, Number(st.data?.idx), text);
             default:

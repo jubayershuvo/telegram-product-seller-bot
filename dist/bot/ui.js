@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.shortId = exports.mainMenu = exports.BTN = exports.stockLabel = exports.trunc = exports.LINE = exports.shopName = exports.esc = exports.HTML = void 0;
+exports.shortId = exports.mainMenu = exports.BTN = exports.stockLabel = exports.trunc = exports.LINE = exports.shopTitle = exports.shopLogo = exports.shopName = exports.esc = exports.HTML = void 0;
 exports.editOrReply = editOrReply;
 exports.commandArgs = commandArgs;
 exports.userLabel = userLabel;
@@ -16,6 +16,15 @@ exports.esc = esc;
 /** Shop name from settings, HTML-escaped, ready to drop into a message. */
 const shopName = () => (0, exports.esc)((0, settings_1.getCachedSettings)().shopName?.trim() || Setting_1.SETTING_DEFAULTS.shopName);
 exports.shopName = shopName;
+/** Shop logo emoji from settings, HTML-escaped. Empty string = admin removed the logo. */
+const shopLogo = () => {
+    const logo = (0, settings_1.getCachedSettings)().shopLogo;
+    return (0, exports.esc)(typeof logo === 'string' ? logo.trim() : Setting_1.SETTING_DEFAULTS.shopLogo);
+};
+exports.shopLogo = shopLogo;
+/** "🏪 Digital Store" - logo + shop name, the header used on every screen. */
+const shopTitle = () => [(0, exports.shopLogo)(), (0, exports.shopName)()].filter(Boolean).join(' ');
+exports.shopTitle = shopTitle;
 exports.LINE = '━━━━━━━━━━━━━━';
 const trunc = (t, n) => (t.length > n ? `${t.slice(0, n - 1)}…` : t);
 exports.trunc = trunc;

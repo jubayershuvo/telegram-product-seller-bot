@@ -89,7 +89,7 @@ export async function showLogoEditor(ctx: BotContext): Promise<void> {
   const emoji = getCachedSettings().shopLogo;
   const groups = [...new Set(SETTING_DEFS.map((d) => d.group))];
   const rows = [
-    [cb('✏️ Change logo (send emoji / image / GIF / sticker)', 'lg:set')],
+    [cb('😀 Change emoji', 'lg:emoji'), cb('🖼 Change image', 'lg:set')],
     [cb('👁 Preview', 'lg:prev')],
   ];
   const remove = [];
@@ -116,14 +116,28 @@ export async function showLogoEditor(ctx: BotContext): Promise<void> {
   );
 }
 
+async function askEmoji(ctx: BotContext): Promise<void> {
+  await setState(ctx.dbUser._id, 'awaiting_shop_logo');
+  await editOrReply(
+    ctx,
+    [
+      '😀 <b>Send the new emoji now</b>',
+      '',
+      'Any emoji, e.g. 🏪 🛒 🔥 💎 🎮',
+      'It is shown before the shop name on every screen.',
+      'Send <code>-</code> to remove it.  /cancel to stop.',
+    ].join('\n'),
+    Markup.inlineKeyboard([[cb('⬅️ Back', 'lg:home')]]),
+  );
+}
+
 async function askLogo(ctx: BotContext): Promise<void> {
   await setState(ctx.dbUser._id, 'awaiting_shop_logo');
   await editOrReply(
     ctx,
     [
-      '🖼 <b>Send the new logo now</b>',
+      '🖼 <b>Send the new logo image now</b>',
       '',
-      '😀 an <b>emoji</b> (any emoji, e.g. 🏪 🛒 🔥)',
       '🖼 a <b>photo</b> or an image <b>file</b> (JPG / PNG / WEBP)',
       '🎞 a <b>GIF</b> / animation',
       '🏷 a <b>sticker</b>',
@@ -216,6 +230,7 @@ export function registerLogoHandlers(bot: Telegraf<BotContext>) {
     });
 
   act('lg:home', showLogoEditor);
+  act('lg:emoji', askEmoji);
   act('lg:set', askLogo);
   act('lg:prev', async (ctx) => {
     await replyWithLogo(ctx, `<b>${shopTitle()}</b>\n\n👆 This is how your logo looks.`);

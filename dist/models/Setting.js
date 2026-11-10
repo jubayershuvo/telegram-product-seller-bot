@@ -3,6 +3,8 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.Setting = exports.SETTING_DEFS = exports.SETTING_DEFAULTS = void 0;
 const mongoose_1 = require("mongoose");
 exports.SETTING_DEFAULTS = {
+    shopLogo: '🏪',
+    shopLogoMedia: '',
     shopName: 'Digital Store',
     currencySymbol: '৳',
     timezone: 'Asia/Dhaka',
@@ -23,6 +25,8 @@ exports.SETTING_DEFAULTS = {
     maxFailedTrxPerHour: 5,
 };
 exports.SETTING_DEFS = [
+    { key: 'shopLogo', type: 'string', group: 'Shop', label: 'Shop logo', hint: 'any emoji shown before the shop name everywhere, e.g. 🏪 🛒 🔥. Send - to remove it', max: 32, hidden: true },
+    { key: 'shopLogoMedia', type: 'json', group: 'Shop', label: 'Shop logo image', hint: 'logo image / GIF / sticker (use the Shop logo editor)', hidden: true },
     { key: 'shopName', type: 'string', group: 'Shop', label: 'Shop name', hint: 'shown to customers, e.g. Digital Store', max: 40 },
     { key: 'currencySymbol', type: 'string', group: 'Shop', label: 'Currency symbol', hint: 'e.g. ৳', max: 5 },
     { key: 'timezone', type: 'timezone', group: 'Shop', label: 'Timezone', hint: 'IANA name, e.g. Asia/Dhaka' },

@@ -12,6 +12,7 @@ const broadcast_1 = require("./handlers/broadcast");
 const shop_1 = require("./handlers/shop");
 const recharge_1 = require("./handlers/recharge");
 const admin_1 = require("./handlers/admin");
+const logo_1 = require("./handlers/logo");
 const text_1 = require("./handlers/text");
 const logger_1 = require("../utils/logger");
 const errors_1 = require("../utils/errors");
@@ -50,6 +51,7 @@ function createBot() {
     // these two listen for the admin's next message (forwarded channel post / broadcast content), so they go first
     (0, channels_1.registerChannelHandlers)(bot);
     (0, broadcast_1.registerBroadcastHandlers)(bot);
+    (0, logo_1.registerLogoHandlers)(bot); // logo image upload: must run before the product file (document) handler
     (0, admin_1.registerAdminHandlers)(bot);
     (0, shop_1.registerShopHandlers)(bot);
     (0, recharge_1.registerRechargeHandlers)(bot);

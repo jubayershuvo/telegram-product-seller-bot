@@ -8,6 +8,7 @@ const telegraf_1 = require("telegraf");
 const mongoose_1 = require("mongoose");
 const ui_1 = require("../ui");
 const settings_1 = require("../../services/settings");
+const logo_1 = require("./logo");
 const inventory_1 = require("../../services/inventory");
 const catalog_1 = require("../../services/catalog");
 const purchase_1 = require("../../services/purchase");
@@ -31,7 +32,7 @@ async function showHelp(ctx) {
     await (0, ui_1.clearState)(ctx.dbUser._id);
     const s = await (0, settings_1.getSettings)();
     await ctx.reply([
-        `ℹ️ <b>How ${(0, ui_1.shopName)()} works</b>`,
+        `${(0, ui_1.shopLogo)() || 'ℹ️'} <b>How ${(0, ui_1.shopName)()} works</b>`,
         ui_1.LINE,
         '1️⃣ ➕ <b>Recharge</b> your wallet (bKash / Nagad)',
         '2️⃣ 🛍 <b>Shop</b> — pick a product and a quantity',
@@ -61,7 +62,7 @@ async function showBuy(ctx, page = 0) {
         (0, catalog_1.getStockMap)(),
     ]);
     if (!products.length) {
-        return (0, ui_1.editOrReply)(ctx, `🛍 <b>${(0, ui_1.shopName)()}</b>\n\n😔 No products are available right now. Please check back soon.`);
+        return (0, ui_1.editOrReply)(ctx, `<b>${(0, ui_1.shopTitle)()}</b>\n\n😔 No products are available right now. Please check back soon.`);
     }
     const pages = Math.max(1, Math.ceil(products.length / PAGE));
     const cur = Math.min(Math.max(0, page), pages - 1);
@@ -92,7 +93,7 @@ async function showBuy(ctx, page = 0) {
     if (nav.length)
         rows.push(nav);
     rows.push([telegraf_1.Markup.button.callback('➕ Recharge', 'rc:start'), telegraf_1.Markup.button.callback('📦 My orders', 'orders:p:0')]);
-    await (0, ui_1.editOrReply)(ctx, [`🛍 <b>${(0, ui_1.shopName)()}</b>`, `💰 Your balance: <b>${(0, money_1.fmt)(u.balance)}</b>`, ui_1.LINE, cards.join('\n\n'), '', 'Tap a product to see details 👇'].join('\n'), telegraf_1.Markup.inlineKeyboard(rows));
+    await (0, ui_1.editOrReply)(ctx, [`<b>${(0, ui_1.shopTitle)()}</b>`, `💰 Your balance: <b>${(0, money_1.fmt)(u.balance)}</b>`, ui_1.LINE, cards.join('\n\n'), '', 'Tap a product to see details 👇'].join('\n'), telegraf_1.Markup.inlineKeyboard(rows));
 }
 /** Quick-pick quantities that fit the product's min / max / stock. */
 function quickQuantities(min, max) {
@@ -341,8 +342,8 @@ async function showWelcome(ctx) {
     const [visible, stockMap, u] = await Promise.all([Product_1.Product.find({ active: true, columnCount: { $gt: 0 } }).select('_id').lean(), (0, catalog_1.getStockMap)(), freshUser(ctx)]);
     const products = visible.length;
     const inStock = visible.reduce((n, p) => n + (stockMap.get(String(p._id))?.available ?? 0), 0);
-    await ctx.reply([
-        `🏪 <b>${(0, ui_1.shopName)()}</b>`,
+    await (0, logo_1.replyWithLogo)(ctx, [
+        `<b>${(0, ui_1.shopTitle)()}</b>`,
         ui_1.LINE,
         `👋 Welcome, <b>${(0, ui_1.esc)(ctx.from?.first_name)}</b>!`,
         '',
@@ -355,7 +356,7 @@ async function showWelcome(ctx) {
         '3️⃣ 📥 Get your file instantly',
         '',
         'Use the menu below 👇',
-    ].join('\n'), { ...ui_1.HTML, ...(0, ui_1.mainMenu)(ctx.isAdmin) });
+    ].join('\n'), (0, ui_1.mainMenu)(ctx.isAdmin));
 }
 function registerShopHandlers(bot) {
     bot.start(showWelcome);

@@ -44,7 +44,7 @@ Send an <b>.xlsx</b> or <b>.csv</b> file to the bot → choose the product → r
 /settings – show all settings
 /set &lt;key&gt; &lt;value&gt; – change a setting (use <code>-</code> as value to clear text/list settings)
 /resetsetting &lt;key&gt; – restore the default value
-Keys: ${Setting_1.SETTING_DEFS.map((d) => d.key).join(', ')}
+Keys: ${Setting_1.SETTING_DEFS.filter((d) => !d.hidden).map((d) => d.key).join(', ')}
 
 <b>Channels &amp; broadcast</b>
 /channels – required channels (add / remove with buttons; also in ⚙️ Settings)
@@ -82,7 +82,7 @@ async function showPanel(ctx) {
     const low = s.lowStockAlert > 0 ? active.filter((p) => p.available > 0 && p.available <= s.lowStockAlert).length : 0;
     const attention = [soldOut ? `🔴 ${soldOut} sold out` : '', low ? `⚠️ ${low} low` : ''].filter(Boolean).join(' • ');
     await (0, ui_1.editOrReply)(ctx, [
-        `🛠 <b>${(0, ui_1.shopName)()} — Admin</b>`,
+        `🛠 <b>${(0, ui_1.shopTitle)()} — Admin</b>`,
         ui_1.LINE,
         `📈 <b>Last 24h:</b> ${st.last24h.orders} orders • ${st.last24h.items} items • <b>${(0, money_1.fmt)(st.last24h.revenue)}</b>`,
         `🗂 Products: <b>${st.perProduct.length}</b>${attention ? `  (${attention})` : ''}`,

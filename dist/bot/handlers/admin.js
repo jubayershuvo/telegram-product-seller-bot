@@ -39,7 +39,7 @@ function findDef(raw) {
         return undefined;
     const k = raw.toLowerCase().replace(/[^a-z0-9]/g, '');
     const name = ALIASES[k] ?? k;
-    return Setting_1.SETTING_DEFS.find((d) => d.key.toLowerCase() === name);
+    return Setting_1.SETTING_DEFS.find((d) => !d.hidden && d.key.toLowerCase() === name);
 }
 function show(d, v) {
     if (d.secret)
@@ -88,8 +88,10 @@ async function showGroup(ctx, gi) {
     await (0, ui_1.clearState)(ctx.dbUser._id);
     const s = await (0, settings_1.getSettings)();
     const rows = Setting_1.SETTING_DEFS.map((d, i) => ({ d, i }))
-        .filter(({ d }) => d.group === group)
+        .filter(({ d }) => d.group === group && !d.hidden)
         .map(({ d, i }) => [telegraf_1.Markup.button.callback(trunc(`${d.label}: ${show(d, s[d.key])}`, 60), `se:k:${i}`)]);
+    if (group === 'Shop')
+        rows.push([telegraf_1.Markup.button.callback('🖼 Shop logo (emoji / image)', 'lg:home')]);
     rows.push([telegraf_1.Markup.button.callback('⬅️ Categories', 'se:home')]);
     const note = GROUP_NOTE[group] ? `\n<i>${(0, ui_1.esc)(GROUP_NOTE[group])}</i>\n` : '';
     await (0, ui_1.editOrReply)(ctx, `${GROUP_ICON[group] ?? '📂'} <b>${(0, ui_1.esc)(group)}</b>${note}\nTap a setting to change it:`, telegraf_1.Markup.inlineKeyboard(rows));
@@ -208,6 +210,8 @@ function registerAdminHandlers(bot) {
         const lines = ['⚙️ <b>Settings</b> (stored in database)', '<i>Prices and order limits are per product: /products</i>'];
         let group = '';
         for (const d of Setting_1.SETTING_DEFS) {
+            if (d.hidden)
+                continue;
             if (d.group !== group) {
                 group = d.group;
                 lines.push('', `<b>${(0, ui_1.esc)(group)}</b>`);
