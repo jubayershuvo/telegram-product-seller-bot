@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.shortId = exports.mainMenu = exports.BTN = exports.esc = exports.HTML = void 0;
+exports.shortId = exports.mainMenu = exports.BTN = exports.stockLabel = exports.trunc = exports.LINE = exports.shopName = exports.esc = exports.HTML = void 0;
 exports.editOrReply = editOrReply;
 exports.commandArgs = commandArgs;
 exports.userLabel = userLabel;
@@ -8,12 +8,23 @@ exports.setState = setState;
 exports.clearState = clearState;
 const telegraf_1 = require("telegraf");
 const User_1 = require("../models/User");
-exports.HTML = { parse_mode: 'HTML' };
+const settings_1 = require("../services/settings");
+const Setting_1 = require("../models/Setting");
+exports.HTML = { parse_mode: 'HTML', link_preview_options: { is_disabled: true } };
 const esc = (s) => String(s ?? '').replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
 exports.esc = esc;
+/** Shop name from settings, HTML-escaped, ready to drop into a message. */
+const shopName = () => (0, exports.esc)((0, settings_1.getCachedSettings)().shopName?.trim() || Setting_1.SETTING_DEFAULTS.shopName);
+exports.shopName = shopName;
+exports.LINE = '━━━━━━━━━━━━━━';
+const trunc = (t, n) => (t.length > n ? `${t.slice(0, n - 1)}…` : t);
+exports.trunc = trunc;
+/** "✅ 120 in stock" / "⚠️ Only 3 left" / "❌ Sold out" */
+const stockLabel = (n) => (n <= 0 ? '❌ Sold out' : n <= 10 ? `⚠️ Only ${n} left` : `✅ ${n} in stock`);
+exports.stockLabel = stockLabel;
 exports.BTN = {
     balance: '💰 Balance',
-    buy: '🛒 Buy',
+    buy: '🛍 Shop',
     recharge: '➕ Recharge',
     orders: '📦 My Orders',
     tx: '🧾 Transactions',

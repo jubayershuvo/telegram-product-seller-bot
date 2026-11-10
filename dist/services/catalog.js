@@ -5,6 +5,12 @@ exports.getProduct = getProduct;
 exports.createProduct = createProduct;
 exports.renameProduct = renameProduct;
 exports.setDescription = setDescription;
+exports.limitsOf = limitsOf;
+exports.buyRange = buyRange;
+exports.describeLimits = describeLimits;
+exports.parseLimits = parseLimits;
+exports.setQtyLimits = setQtyLimits;
+exports.setPrice = setPrice;
 exports.getStockMap = getStockMap;
 exports.getProductStock = getProductStock;
 exports.isStructureLocked = isStructureLocked;
@@ -26,14 +32,17 @@ const toKey = (name) => name.trim().toLowerCase();
 async function getProduct(id) {
     return mongoose_1.Types.ObjectId.isValid(String(id)) ? Product_1.Product.findById(id) : null;
 }
-async function createProduct(nameRaw, price) {
+async function createProduct(nameRaw, price, description) {
     const name = nameRaw.trim().replace(/\s+/g, ' ');
     if (name.length < 2 || name.length > exports.NAME_MAX)
         throw new errors_1.AppError(`Product name must be 2–${exports.NAME_MAX} characters.`);
     if (!Number.isFinite(price) || price < 0 || (0, money_1.round2)(price) !== price)
         throw new errors_1.AppError('Invalid price.');
+    const desc = (description ?? '').trim();
+    if (desc.length > exports.DESC_MAX)
+        throw new errors_1.AppError(`Description is too long (max ${exports.DESC_MAX} characters).`);
     try {
-        return await Product_1.Product.create({ name, nameKey: toKey(name), price });
+        return await Product_1.Product.create({ name, nameKey: toKey(name), price, ...(desc && { description: desc }) });
     }
     catch (e) {
         if ((0, errors_1.isDuplicateKeyError)(e))
@@ -59,6 +68,59 @@ async function setDescription(id, text) {
     if (d.length > exports.DESC_MAX)
         throw new errors_1.AppError(`Description is too long (max ${exports.DESC_MAX} characters).`);
     await Product_1.Product.updateOne({ _id: id }, d ? { $set: { description: d } } : { $unset: { description: 1 } });
+}
+// ---------- per-product order limits ----------
+/** Normalised limits of a product (works for lean documents and for old documents that lack the fields). */
+function limitsOf(p) {
+    const min = p.minQty && p.minQty > 1 ? Math.floor(p.minQty) : 1;
+    const cap = p.maxQty && p.maxQty > 0 ? Math.floor(p.maxQty) : 0;
+    return { min, cap };
+}
+/** What a buyer may order right now: stock capped by the product's own max. `buyable` is false when stock is below the minimum. */
+function buyRange(p, available) {
+    const { min, cap } = limitsOf(p);
+    const max = cap > 0 ? Math.min(available, cap) : available;
+    return { min, max, buyable: available > 0 && max >= min };
+}
+/** "min 5 • max 100" for buyers / admins, empty string when the product has no special limits. */
+function describeLimits(p) {
+    const { min, cap } = limitsOf(p);
+    const parts = [];
+    if (min > 1)
+        parts.push(`min ${min}`);
+    if (cap > 0)
+        parts.push(`max ${cap}`);
+    return parts.join(' • ');
+}
+/**
+ * Admin input for the limits. Accepts `5 100`, `5-100`, `5,100`; a single number sets the maximum;
+ * `-` resets to the defaults (min 1, no max). A max of 0 means "no cap".
+ */
+function parseLimits(text) {
+    const t = text.trim().toLowerCase();
+    if (['-', 'reset', 'none', 'default'].includes(t))
+        return { min: 1, max: 0 };
+    const nums = t.split(/[\s,;:\-–]+|to/).filter(Boolean);
+    if (nums.length < 1 || nums.length > 2 || nums.some((n) => !/^\d{1,7}$/.test(n))) {
+        return 'Send two whole numbers: minimum and maximum, e.g. 1 100. Use 0 as the maximum for no cap.';
+    }
+    const [a, b] = nums.map(Number);
+    const [min, max] = nums.length === 1 ? [1, a] : [a, b];
+    if (min < 1)
+        return 'The minimum must be at least 1.';
+    if (max > 0 && max < min)
+        return 'The maximum cannot be lower than the minimum.';
+    return { min, max };
+}
+async function setQtyLimits(id, min, max) {
+    if (!Number.isInteger(min) || !Number.isInteger(max) || min < 1 || max < 0 || (max > 0 && max < min))
+        throw new errors_1.AppError('Invalid limits.');
+    await Product_1.Product.updateOne({ _id: id }, { $set: { minQty: min, maxQty: max } });
+}
+async function setPrice(id, price) {
+    if (!Number.isFinite(price) || price <= 0 || (0, money_1.round2)(price) !== price)
+        throw new errors_1.AppError('Invalid price.');
+    await Product_1.Product.updateOne({ _id: id }, { $set: { price } });
 }
 /** stock of every product in one query */
 async function getStockMap() {

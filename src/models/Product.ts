@@ -14,6 +14,10 @@ export interface IProduct {
   description?: string;
   /** price per item (one data row), max 2 decimals */
   price: number;
+  /** smallest quantity one order may contain (>= 1) */
+  minQty: number;
+  /** largest quantity one order may contain. 0 = no cap, limited only by stock */
+  maxQty: number;
   /** hidden products are not shown to buyers (but old orders keep working) */
   active: boolean;
   /** number of columns of the stored file structure (0 = not defined yet) */
@@ -37,6 +41,8 @@ const schema = new Schema<IProduct>(
     nameKey: { type: String, required: true, unique: true },
     description: { type: String, trim: true, maxlength: 500 },
     price: { type: Number, required: true, min: 0 },
+    minQty: { type: Number, default: 1, min: 1 },
+    maxQty: { type: Number, default: 0, min: 0 },
     active: { type: Boolean, default: true },
     columnCount: { type: Number, default: 0 },
     columns: { type: [String], default: [] },

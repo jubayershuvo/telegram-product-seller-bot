@@ -1,6 +1,5 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.maxBuyable = void 0;
 exports.getStock = getStock;
 exports.reserveItems = reserveItems;
 exports.releaseItems = releaseItems;
@@ -17,9 +16,6 @@ async function getStock() {
     }
     return total;
 }
-/** Highest quantity a user may order: what is in stock, optionally capped by the admin `maxQty` setting (0 = no cap). */
-const maxBuyable = (available, maxQty) => (maxQty > 0 ? Math.min(available, maxQty) : available);
-exports.maxBuyable = maxBuyable;
 /**
  * Reserve (= mark as sold) `qty` items of ONE product for an order.
  * Every document is flipped with a filter on status:'available', which MongoDB applies atomically per document,

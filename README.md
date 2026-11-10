@@ -6,23 +6,28 @@ Everything (admin and users) happens **inside Telegram**. There is no web dashbo
 ## Features
 
 **Admin** — `/admin` opens a button panel; **🗂 Products** is the product manager
-- **Create a product first** (name → price), and **edit it any time**: ✏️ name, 💵 price, 📝 description, 👁 hide/show in the shop, 📄 delivery format (XLSX/CSV), 🧹 clear unsold items, 🗑 delete (only if it never sold)
+- **Everything about a product lives on the product** — there is no shop-wide price. Create it (name → 💵 price → description) and **edit it any time**: ✏️ name, 💵 price, 📏 **order limits** (min / max quantity per order), 📝 description, 👁 hide/show in the shop, 📄 delivery format (XLSX/CSV), 🧹 clear unsold items, 🗑 delete (only if it never sold)
+- Each product card shows its stock, **sales and revenue**; the product list marks 🟢 in stock • ⚠️ low • 🔴 sold out • ⚪ hidden
+- **Low-stock alerts:** admins are notified when a product sells out or drops to the `lowStockAlert` level (default 5, `0` = off)
 - **Upload stock into a product** — two ways, both work:
   1. open the product → **📥 Upload file** → send the file, or
   2. just send an `.xlsx` / `.csv` file to the bot, then **pick the product** (or create a new one) from the buttons
 - **The first file defines the product's file structure** (all columns, and whether row 1 is a header — the bot asks you). Later uploads must have the **same structure** (same column count, same header names) or they are rejected; buyers always receive a file with exactly that layout
 - One row = one sellable item. Rows are de-duplicated per product (a row that was already added or sold is skipped, so nothing can be sold twice)
-- `/stats` stock per product, users, deposits, revenue; `/products`, `/newproduct`, `/imports`
-- `/settings_edit`, `/settings`, `/set`, `/resetsetting`; `price` is now only the **default price pre-filled for new products**
+- `/stats` revenue, last-24h sales and stock **per product**; `/products`, `/newproduct`, `/imports`
+- `/admin` is a dashboard: last-24h sales, product count with sold-out / low-stock warnings, recharge status, then buttons for everything
+- `/settings_edit`, `/settings`, `/set`, `/resetsetting` — **store-wide options only** (shop name, currency, timezone, support, low-stock level, recharge, force join, uploads, TrxID rules)
 - `/users`, `/user`, `/allorders`, `/alldeposits`, `/alltx`, `/addbalance`, `/deductbalance`, `/ban`, `/unban`
 
 **Users**
 - `/start` registers automatically; wallet balance
-- **🛒 Buy → pick a product → send a quantity (1 – in stock) → confirm** → the file with the purchased rows arrives instantly, in that product's structure and format (XLSX or CSV)
+- **🛍 Shop → pick a product → tap a quantity (or type one) → confirm** → the file with the purchased rows arrives instantly, in that product's structure and format (XLSX or CSV). The product page shows price, stock, the product's min/max per order and the live total for every quick-quantity button
 - Order history (re-download any file — it is rebuilt with the structure the product had when you bought it), transaction history, recharge history
 - Recharge via bKash/Nagad: pick provider → pay → send TrxID → verified from synced SMS → wallet credited
 
 **Upgrading from the single-product version:** on first start the old `emails` collection is converted automatically into a product called **Emails** (1 column, no header, XLSX — exactly like before). Old orders keep working and can still be re-downloaded. The old collection is kept, renamed to `emails_migrated`.
+
+**Upgrading from the version that still had a shop-wide `price` / `maxQty` setting:** on first start the old values are moved onto the products automatically — the old `maxQty` becomes each product's max per order, the `price` setting is deleted (every product already has its own price; the converted **Emails** product takes the old price). Nothing to do by hand.
 
 ## Force channel subscription
 
@@ -53,10 +58,11 @@ src/
   models/      User Product Item Order Deposit Transaction ImportBatch Setting (defaults live here)
   services/
     wallet.ts       atomic + idempotent credit/debit (ledger)
-    catalog.ts      products, stock per product, structure-checked import
+    catalog.ts      products, per-product price + min/max order limits, stock, structure-checked import
     inventory.ts    atomic per-product item reservation / release
     purchase.ts     purchase flow (one product per order) + rollback
     migrateLegacy.ts one-time emails -> product migration
+    migrateSettings.ts one-time: shop-wide price / maxQty settings -> per-product values
     deposit.ts      TrxID claim -> verify -> credit
     dataFile.ts     read .xlsx/.csv (ExcelJS / own CSV parser) and build delivery files
     settings.ts (DB-backed, cached)  settingsParser.ts  stats.ts  userLock.ts  recovery.ts
@@ -132,12 +138,14 @@ Everything else is a document in the `settings` collection. Defaults are defined
 | `/set <key> <value>` | change one (use `-` as value to clear text/list settings) |
 | `/resetsetting <key>` | restore the default from the model |
 
-Keys: `currencySymbol timezone price(default for new products) maxQty support bkashNumber nagadNumber rechargeEnabled rechargeScheduleEnabled rechargeOpenTime rechargeCloseTime minRecharge maxRecharge rechargePresets maxUploadMb trxIdRegex maxFailedTrxPerHour`
-(short aliases: `bkash`, `nagad`, `presets`).
+Keys: `shopName currencySymbol timezone support lowStockAlert rechargeEnabled rechargeScheduleEnabled rechargeOpenTime rechargeCloseTime bkashNumber nagadNumber minRecharge maxRecharge rechargePresets forceJoinEnabled maxUploadMb trxIdRegex maxFailedTrxPerHour`
+(short aliases: `shop`, `lowstock`, `bkash`, `nagad`, `presets`).
+
+> **Not settings any more:** price, description, min/max quantity per order, delivery format and visibility are **per product** — edit them in `/products`.
 
 **Prices** are per product (up to 2 decimals); totals are price × quantity rounded to 2 decimals (0.85 × 2 = 1.70). The price is frozen on the order, and if an admin changes it while a buyer is on the confirm screen, the purchase is stopped and the buyer sees the new price.
 
-**Buying limit:** users send a custom quantity. The allowed range is `1 – items currently in stock for that product`. `maxQty` is an optional extra cap per order; `0` (default) means no cap.
+**Order limits (per product):** each product has its own `min` and `max` quantity per order (📏 Limits on the product card: send `5 100`, `10 0` for no max, or `-` to remove limits). The range a buyer can order is `min – min(max, items in stock)`. If the stock is below the product's minimum, the product shows as unavailable until it is restocked. Defaults: min 1, no max.
 
 ## Recharge (SMS verification)
 
@@ -162,7 +170,7 @@ Rules: unknown TrxID → rejected (counts as a failed attempt); SMS service down
 
 - `Item` has a **unique index on (productId, row fingerprint)**; each item is reserved with a per-document atomic update filtered on `status:'available'`, so two simultaneous buyers can never get the same row. (No replica set required, so it works on a plain local MongoDB.)
 - Wallet changes use one atomic `findOneAndUpdate` with a `balance >= amount` guard and an **idempotency key** stored on the user, so a retry can never charge or credit twice and balances can't go negative.
-- A purchase that fails halfway releases its emails and refunds automatically; a background job (every 5 min and at startup) repairs anything a crash left in "processing".
+- A purchase that fails halfway releases its items and refunds automatically; a background job (every 5 min and at startup) repairs anything a crash left in "processing".
 - `Deposit.trxId` has a **unique partial index**: one TrxID can only ever be claimed once; failed verifications release it so honest users can retry. Failed-attempt limit per user per hour (`maxFailedTrxPerHour` setting).
 - Per-user DB lock stops double-tapping Confirm / double submissions; flood rate-limit per user; banned users blocked; admin commands guarded by `ADMIN_IDS`; bot only talks in private chats.
 - All state (balances, stock, conversation steps) lives in MongoDB, so restarts lose nothing.

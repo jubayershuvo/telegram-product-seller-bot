@@ -1,7 +1,7 @@
 {
-  "name": "telegram-email-selling-bot",
+  "name": "telegram-shop-bot",
   "version": "1.0.0",
-  "description": "Telegram bot for selling emails: wallet, bKash/Nagad recharge via TrxID API, Excel import/export, MongoDB",
+  "description": "Multi-product Telegram shop bot: per-product prices, wallet, bKash/Nagad recharge, Excel/CSV stock import, MongoDB",
   "main": "dist/index.js",
   "private": true,
   "engines": { "node": ">=18.18.0" },

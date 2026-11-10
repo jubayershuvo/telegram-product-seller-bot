@@ -8,7 +8,7 @@ const Product_1 = require("../models/Product");
 const Item_1 = require("../models/Item");
 const wallet_1 = require("./wallet");
 const inventory_1 = require("./inventory");
-const settings_1 = require("./settings");
+const catalog_1 = require("./catalog");
 const errors_1 = require("../utils/errors");
 const money_1 = require("../utils/money");
 const logger_1 = require("../utils/logger");
@@ -22,11 +22,8 @@ const logger_1 = require("../utils/logger");
  * A crash in the middle is repaired by services/recovery.ts.
  */
 async function purchaseProduct(userId, telegramId, productId, quantity, expectedUnitPrice) {
-    const { maxQty } = await (0, settings_1.getSettings)();
     if (!Number.isInteger(quantity) || quantity < 1)
         throw new errors_1.AppError('Invalid quantity.');
-    if (maxQty > 0 && quantity > maxQty)
-        throw new errors_1.AppError(`Maximum ${maxQty} per purchase.`);
     const product = await Product_1.Product.findById(productId);
     if (!product || !product.active)
         throw new errors_1.AppError('This product is no longer available.', 'NO_PRODUCT');
@@ -36,8 +33,14 @@ async function purchaseProduct(userId, telegramId, productId, quantity, expected
     if ((0, money_1.round2)(unitPrice) !== (0, money_1.round2)(expectedUnitPrice)) {
         throw new errors_1.AppError(`The price has changed to ${(0, money_1.fmt)(unitPrice)} each. Please start the purchase again.`, 'PRICE_CHANGED');
     }
+    // order limits belong to the product (min / max per order)
+    const { min, cap } = (0, catalog_1.limitsOf)(product);
+    if (quantity < min)
+        throw new errors_1.AppError(`The minimum order for ${product.name} is ${min}.`, 'MIN_QTY');
+    if (cap > 0 && quantity > cap)
+        throw new errors_1.AppError(`The maximum order for ${product.name} is ${cap}.`, 'MAX_QTY');
     const available = await Item_1.Item.countDocuments({ productId, status: 'available' });
-    if (quantity > (0, inventory_1.maxBuyable)(available, maxQty))
+    if (quantity > available)
         throw new errors_1.AppError(`Only ${available} available right now.`, 'NO_STOCK');
     const total = (0, money_1.lineTotal)(unitPrice, quantity);
     const order = await Order_1.Order.create({

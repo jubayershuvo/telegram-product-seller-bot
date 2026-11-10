@@ -3,7 +3,7 @@ import { Product } from '../models/Product';
 import { Item } from '../models/Item';
 import { Order } from '../models/Order';
 import { ImportBatch } from '../models/ImportBatch';
-import { getSettings } from './settings';
+import { Setting } from '../models/Setting';
 import { rowKey } from './dataFile';
 import { logger } from '../utils/logger';
 
@@ -27,7 +27,12 @@ export async function migrateLegacyEmails(): Promise<void> {
   }
 
   logger.warn({ count }, 'Migrating legacy emails into a product…');
-  const { price } = await getSettings();
+  // the old single-product bot kept its price in the `price` setting; it becomes this product's own price
+  const stored = (await Setting.findOne({ key: 'price' }).lean())?.value;
+  const price = typeof stored === 'number' && Number.isFinite(stored) && stored > 0 ? stored : 5;
+  // ...and the old shop-wide `maxQty` cap becomes this product's own max per order
+  const storedCap = (await Setting.findOne({ key: 'maxQty' }).lean())?.value;
+  const maxQty = typeof storedCap === 'number' && Number.isInteger(storedCap) && storedCap > 0 ? storedCap : 0;
   let product = await Product.findOne({ legacySource: 'emails' });
   if (!product) {
     // "Emails" may already be taken by a product the admin created before the first start of this version
@@ -37,6 +42,7 @@ export async function migrateLegacyEmails(): Promise<void> {
       name,
       nameKey: name.toLowerCase(),
       price,
+      maxQty,
       active: true,
       columnCount: 1,
       columns: ['A'],

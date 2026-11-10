@@ -1,6 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.isBroadcastRunning = void 0;
+exports.sendBroadcastContent = sendBroadcastContent;
 exports.audienceInfo = audienceInfo;
 exports.startBroadcast = startBroadcast;
 exports.cancelBroadcast = cancelBroadcast;
@@ -17,6 +18,17 @@ const BATCH_MS = 1000;
 const MAX_ATTEMPTS = 4;
 const PROGRESS_EVERY_MS = 3000;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+/** Sends the broadcast content to one chat. Text goes out without a link preview; media is copied as it is. */
+async function sendBroadcastContent(tg, toChatId, src) {
+    if (src.text) {
+        await tg.sendMessage(toChatId, src.text, {
+            ...(src.entities?.length ? { entities: src.entities } : {}),
+            link_preview_options: { is_disabled: true },
+        });
+        return;
+    }
+    await tg.copyMessage(toChatId, src.chatId, src.messageId);
+}
 let current = null;
 const isBroadcastRunning = () => current !== null;
 exports.isBroadcastRunning = isBroadcastRunning;
@@ -37,7 +49,7 @@ async function sendOne(tg, userId, src, job, pause) {
         if (wait > 0)
             await sleep(wait);
         try {
-            await tg.copyMessage(userId, src.chatId, src.messageId);
+            await sendBroadcastContent(tg, userId, src);
             return 'ok';
         }
         catch (e) {

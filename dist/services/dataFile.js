@@ -77,11 +77,19 @@ async function parseDataFile(buffer, fileName) {
         const ws = wb.worksheets.find((w) => w.actualRowCount > 0);
         if (!ws)
             throw new errors_1.AppError('The workbook has no data.');
-        const cols = ws.columnCount;
+        // Use only cells that really exist (row.values is sparse). Looping over ws.columnCount for every row
+        // can be 16k columns x thousands of rows when a sheet carries column formatting, which freezes the bot.
+        const MAX_COLS = 200;
         ws.eachRow({ includeEmpty: false }, (row) => {
             const cells = [];
-            for (let c = 1; c <= cols; c++)
-                cells.push(cellToString(row.getCell(c).value));
+            row.eachCell({ includeEmpty: false }, (cell, colNumber) => {
+                if (colNumber > MAX_COLS)
+                    return;
+                cells[colNumber - 1] = cellToString(cell.value);
+            });
+            for (let i = 0; i < cells.length; i++)
+                if (cells[i] === undefined)
+                    cells[i] = '';
             raw.push(cells);
         });
     }

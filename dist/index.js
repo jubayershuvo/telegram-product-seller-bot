@@ -5,6 +5,7 @@ const db_1 = require("./config/db");
 const bot_1 = require("./bot");
 const recovery_1 = require("./services/recovery");
 const migrateLegacy_1 = require("./services/migrateLegacy");
+const migrateSettings_1 = require("./services/migrateSettings");
 const settings_1 = require("./services/settings");
 const logger_1 = require("./utils/logger");
 const errors_1 = require("./utils/errors");
@@ -12,6 +13,7 @@ async function main() {
     await (0, db_1.connectDb)();
     await (0, settings_1.seedDefaults)(); // inserts any missing setting with its default from models/Setting.ts
     await (0, migrateLegacy_1.migrateLegacyEmails)(); // one-time: old single-product `emails` -> product "Emails"
+    await (0, migrateSettings_1.migrateObsoleteSettings)(); // one-time: shop-wide price / maxQty -> per-product values
     const settingsTimer = setInterval(() => void (0, settings_1.loadSettings)().catch(() => undefined), 30_000);
     settingsTimer.unref();
     const bot = (0, bot_1.createBot)();

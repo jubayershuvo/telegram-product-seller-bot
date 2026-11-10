@@ -60,13 +60,13 @@ function registerBroadcastHandlers(bot) {
             return next(); // /cancel etc. keep working
         // preview = exactly what users will receive; also proves the message type can be copied
         try {
-            await ctx.telegram.copyMessage(ctx.chat.id, ctx.chat.id, m.message_id);
+            await (0, broadcast_1.sendBroadcastContent)(ctx.telegram, ctx.chat.id, { chatId: ctx.chat.id, messageId: m.message_id, text: m.text, entities: m.entities });
         }
         catch {
             return ctx.reply('❌ That message type cannot be broadcast. Send text or a photo/video/document/audio/voice/GIF/sticker, or /cancel.');
         }
         const a = await (0, broadcast_1.audienceInfo)();
-        await (0, ui_1.setState)(ctx.dbUser._id, 'broadcast_confirm', { messageId: m.message_id });
+        await (0, ui_1.setState)(ctx.dbUser._id, 'broadcast_confirm', { messageId: m.message_id, text: m.text ?? null, entities: m.entities ?? null });
         await ctx.reply([
             '👆 <b>This is what users will receive.</b>',
             '',
@@ -110,7 +110,12 @@ function registerBroadcastHandlers(bot) {
             const ok = await (0, broadcast_1.startBroadcast)({
                 telegram: ctx.telegram,
                 adminId,
-                source: { chatId, messageId },
+                source: {
+                    chatId,
+                    messageId,
+                    text: typeof st?.data?.text === 'string' ? st.data.text : undefined,
+                    entities: Array.isArray(st?.data?.entities) ? st.data.entities : undefined,
+                },
                 onProgress: (s) => edit(statsText(s, '📣 <b>Broadcasting…</b>')),
                 onDone: async (s) => {
                     const title = s.status === 'completed' ? '✅ <b>Broadcast finished</b>' : s.status === 'cancelled' ? '🛑 <b>Broadcast stopped</b>' : '⚠️ <b>Broadcast interrupted</b>';

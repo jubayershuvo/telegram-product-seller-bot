@@ -11,6 +11,8 @@ function parseSettingInput(def, raw) {
     const empty = EMPTY.has(text.toLowerCase());
     switch (def.type) {
         case 'string':
+            if (!empty && def.max !== undefined && text.length > def.max)
+                return fail(`Maximum ${def.max} characters.`);
             return { ok: true, value: empty ? '' : text };
         case 'money': {
             const a = (0, money_1.parseAmount)(text);

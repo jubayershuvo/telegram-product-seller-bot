@@ -4,8 +4,8 @@ import { User } from '../models/User';
 import { Product } from '../models/Product';
 import { Item } from '../models/Item';
 import { creditWallet, debitWallet } from './wallet';
-import { releaseItems, reserveItems, getOrderRows, maxBuyable } from './inventory';
-import { getSettings } from './settings';
+import { releaseItems, reserveItems, getOrderRows } from './inventory';
+import { limitsOf } from './catalog';
 import { AppError } from '../utils/errors';
 import { fmt, lineTotal, round2 } from '../utils/money';
 import { logger } from '../utils/logger';
@@ -26,9 +26,7 @@ export async function purchaseProduct(
   quantity: number,
   expectedUnitPrice: number,
 ): Promise<{ order: OrderDoc; rows: string[][] }> {
-  const { maxQty } = await getSettings();
   if (!Number.isInteger(quantity) || quantity < 1) throw new AppError('Invalid quantity.');
-  if (maxQty > 0 && quantity > maxQty) throw new AppError(`Maximum ${maxQty} per purchase.`);
 
   const product = await Product.findById(productId);
   if (!product || !product.active) throw new AppError('This product is no longer available.', 'NO_PRODUCT');
@@ -37,8 +35,12 @@ export async function purchaseProduct(
   if (round2(unitPrice) !== round2(expectedUnitPrice)) {
     throw new AppError(`The price has changed to ${fmt(unitPrice)} each. Please start the purchase again.`, 'PRICE_CHANGED');
   }
+  // order limits belong to the product (min / max per order)
+  const { min, cap } = limitsOf(product);
+  if (quantity < min) throw new AppError(`The minimum order for ${product.name} is ${min}.`, 'MIN_QTY');
+  if (cap > 0 && quantity > cap) throw new AppError(`The maximum order for ${product.name} is ${cap}.`, 'MAX_QTY');
   const available = await Item.countDocuments({ productId, status: 'available' });
-  if (quantity > maxBuyable(available, maxQty)) throw new AppError(`Only ${available} available right now.`, 'NO_STOCK');
+  if (quantity > available) throw new AppError(`Only ${available} available right now.`, 'NO_STOCK');
 
   const total = lineTotal(unitPrice, quantity);
   const order = await Order.create({

@@ -13,6 +13,7 @@ export function parseSettingInput(def: SettingDef, raw: string): ParseResult {
 
   switch (def.type) {
     case 'string':
+      if (!empty && def.max !== undefined && text.length > def.max) return fail(`Maximum ${def.max} characters.`);
       return { ok: true, value: empty ? '' : text };
 
     case 'money': {

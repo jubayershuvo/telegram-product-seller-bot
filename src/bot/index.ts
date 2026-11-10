@@ -70,7 +70,7 @@ export async function registerCommandMenus(bot: Telegraf<BotContext>): Promise<v
     .setMyCommands([
       { command: 'start', description: 'Start / main menu' },
       { command: 'balance', description: 'Wallet balance' },
-      { command: 'buy', description: 'Browse products & buy' },
+      { command: 'shop', description: 'Browse products & buy' },
       { command: 'recharge', description: 'Add money to wallet' },
       { command: 'orders', description: 'Purchase history' },
       { command: 'transactions', description: 'Wallet transactions' },
@@ -83,7 +83,7 @@ export async function registerCommandMenus(bot: Telegraf<BotContext>): Promise<v
       .setMyCommands(
         [
           { command: 'admin', description: 'Admin command list' },
-          { command: 'products', description: 'Manage products & upload stock' },
+          { command: 'products', description: 'Manage products, prices & stock' },
           { command: 'newproduct', description: 'Create a product' },
           { command: 'stats', description: 'Inventory & sales stats' },
           { command: 'recharge_on', description: 'Open recharge for all' },
@@ -96,15 +96,14 @@ export async function registerCommandMenus(bot: Telegraf<BotContext>): Promise<v
           { command: 'channels', description: 'Required channels (force join)' },
           { command: 'addchannel', description: 'Add required channel' },
           { command: 'removechannel', description: 'Remove required channel' },
-          { command: 'settings_edit', description: 'Edit settings step by step' },
+          { command: 'settings_edit', description: 'Edit store settings' },
           { command: 'settings', description: 'Show all settings' },
-          { command: 'price', description: 'Default price for new products' },
           { command: 'users', description: 'List users' },
           { command: 'allorders', description: 'All orders' },
           { command: 'alldeposits', description: 'All deposits' },
           { command: 'alltx', description: 'All transactions' },
           { command: 'balance', description: 'My wallet' },
-          { command: 'buy', description: 'Browse products & buy' },
+          { command: 'shop', description: 'Browse products & buy' },
         ],
         { scope: { type: 'chat', chat_id: id } },
       )

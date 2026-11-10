@@ -47,6 +47,58 @@ export async function setDescription(id: Types.ObjectId, text: string): Promise<
   await Product.updateOne({ _id: id }, d ? { $set: { description: d } } : { $unset: { description: 1 } });
 }
 
+// ---------- per-product order limits ----------
+/** Normalised limits of a product (works for lean documents and for old documents that lack the fields). */
+export function limitsOf(p: { minQty?: number | null; maxQty?: number | null }): { min: number; cap: number } {
+  const min = p.minQty && p.minQty > 1 ? Math.floor(p.minQty) : 1;
+  const cap = p.maxQty && p.maxQty > 0 ? Math.floor(p.maxQty) : 0;
+  return { min, cap };
+}
+
+/** What a buyer may order right now: stock capped by the product's own max. `buyable` is false when stock is below the minimum. */
+export function buyRange(p: { minQty?: number | null; maxQty?: number | null }, available: number): { min: number; max: number; buyable: boolean } {
+  const { min, cap } = limitsOf(p);
+  const max = cap > 0 ? Math.min(available, cap) : available;
+  return { min, max, buyable: available > 0 && max >= min };
+}
+
+/** "min 5 • max 100" for buyers / admins, empty string when the product has no special limits. */
+export function describeLimits(p: { minQty?: number | null; maxQty?: number | null }): string {
+  const { min, cap } = limitsOf(p);
+  const parts = [];
+  if (min > 1) parts.push(`min ${min}`);
+  if (cap > 0) parts.push(`max ${cap}`);
+  return parts.join(' • ');
+}
+
+/**
+ * Admin input for the limits. Accepts `5 100`, `5-100`, `5,100`; a single number sets the maximum;
+ * `-` resets to the defaults (min 1, no max). A max of 0 means "no cap".
+ */
+export function parseLimits(text: string): { min: number; max: number } | string {
+  const t = text.trim().toLowerCase();
+  if (['-', 'reset', 'none', 'default'].includes(t)) return { min: 1, max: 0 };
+  const nums = t.split(/[\s,;:\-–]+|to/).filter(Boolean);
+  if (nums.length < 1 || nums.length > 2 || nums.some((n) => !/^\d{1,7}$/.test(n))) {
+    return 'Send two whole numbers: minimum and maximum, e.g. 1 100. Use 0 as the maximum for no cap.';
+  }
+  const [a, b] = nums.map(Number);
+  const [min, max] = nums.length === 1 ? [1, a] : [a, b];
+  if (min < 1) return 'The minimum must be at least 1.';
+  if (max > 0 && max < min) return 'The maximum cannot be lower than the minimum.';
+  return { min, max };
+}
+
+export async function setQtyLimits(id: Types.ObjectId, min: number, max: number): Promise<void> {
+  if (!Number.isInteger(min) || !Number.isInteger(max) || min < 1 || max < 0 || (max > 0 && max < min)) throw new AppError('Invalid limits.');
+  await Product.updateOne({ _id: id }, { $set: { minQty: min, maxQty: max } });
+}
+
+export async function setPrice(id: Types.ObjectId, price: number): Promise<void> {
+  if (!Number.isFinite(price) || price <= 0 || round2(price) !== price) throw new AppError('Invalid price.');
+  await Product.updateOne({ _id: id }, { $set: { price } });
+}
+
 // ---------- stock ----------
 export interface Stock {
   total: number;

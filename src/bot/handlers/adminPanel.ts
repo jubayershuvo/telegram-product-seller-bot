@@ -1,7 +1,7 @@
 import { Markup, Telegraf } from 'telegraf';
 import { Types } from 'mongoose';
 import { BotContext } from '../context';
-import { BTN, HTML, clearState, commandArgs, editOrReply, esc, setState, shortId, userLabel } from '../ui';
+import { BTN, HTML, LINE, clearState, commandArgs, editOrReply, esc, setState, shopName, shortId, userLabel } from '../ui';
 import { adminOnly } from '../middlewares/auth';
 import { env } from '../../config/env';
 import { getSettings } from '../../services/settings';
@@ -25,20 +25,20 @@ const panelBack: Btn[] = [cb('⬅️ Admin panel', 'ap:home')];
 export const HELP = `<b>🛠 Admin commands</b>
 Tip: /admin opens the button panel, no typing needed.
 
-<b>Inventory</b>
-/products – create / edit products, upload stock
+<b>Products &amp; stock</b>
+/products – create and manage products (name, 💵 price, description, 📏 order limits, visibility, delivery format)
 /newproduct – create a product
 Send an <b>.xlsx</b> or <b>.csv</b> file to the bot → choose the product → rows become sellable items
-/stats – inventory per product, users, sales, deposits
+/stats – sales, stock and revenue per product
 /imports – recent imports
+<i>Every product has its own price and min/max order quantity. There is no shop-wide price.</i>
 
-<b>Pricing &amp; settings</b>
-Prices are edited per product in /products
-/settings_edit – edit settings step by step (pick category → pick setting → send value)
-/settings – show all settings (saved in the database)
+<b>Settings (store-wide)</b>
+/settings_edit – edit settings step by step
+/settings – show all settings
 /set &lt;key&gt; &lt;value&gt; – change a setting (use <code>-</code> as value to clear text/list settings)
 /resetsetting &lt;key&gt; – restore the default value
-Keys: maxqty, rechargeenabled, rechargescheduleenabled, rechargeopentime, rechargeclosetime, bkash, nagad, minrecharge, maxrecharge, rechargepresets, currencysymbol, timezone, support, maxuploadmb, forcejoinenabled, trxidregex, maxfailedtrxperhour (see /settings)
+Keys: ${SETTING_DEFS.map((d) => d.key).join(', ')}
 
 <b>Channels &amp; broadcast</b>
 /channels – required channels (add / remove with buttons; also in ⚙️ Settings)
@@ -72,26 +72,30 @@ Keys: maxqty, rechargeenabled, rechargescheduleenabled, rechargeopentime, rechar
 export async function showPanel(ctx: BotContext) {
   await clearState(ctx.dbUser._id);
   const [st, s] = await Promise.all([getStats(), getSettings()]);
+  const active = st.perProduct.filter((p) => p.active);
+  const soldOut = active.filter((p) => p.available === 0).length;
+  const low = s.lowStockAlert > 0 ? active.filter((p) => p.available > 0 && p.available <= s.lowStockAlert).length : 0;
+  const attention = [soldOut ? `🔴 ${soldOut} sold out` : '', low ? `⚠️ ${low} low` : ''].filter(Boolean).join(' • ');
   await editOrReply(
     ctx,
     [
-      '🛠 <b>Admin panel</b>',
-      '',
-      `🗂 Products: <b>${st.perProduct.length}</b>   📦 In stock: <b>${st.stock.available}</b> / ${st.stock.total}`,
-      `👥 Users: <b>${st.users}</b>   🛍 Sold: <b>${st.sales.items}</b> items`,
+      `🛠 <b>${shopName()} — Admin</b>`,
+      LINE,
+      `📈 <b>Last 24h:</b> ${st.last24h.orders} orders • ${st.last24h.items} items • <b>${fmt(st.last24h.revenue)}</b>`,
+      `🗂 Products: <b>${st.perProduct.length}</b>${attention ? `  (${attention})` : ''}`,
+      `📦 In stock: <b>${st.stock.available}</b> of ${st.stock.total}   👥 Users: <b>${st.users}</b>`,
       `💳 Recharge: ${describeRecharge(s)}`,
       '',
       'Choose an action 👇',
     ].join('\n'),
     Markup.inlineKeyboard([
+      [cb('🗂 Products', 'pr:l:0'), cb('➕ New product', 'pr:new')],
+      [cb('📊 Statistics', 'ap:stats'), cb('🛍 Orders', 'ap:o:0')],
+      [cb('👥 Users & balance', 'ab:p:0'), cb('💳 Deposits', 'ap:d:0')],
       [cb(s.rechargeEnabled ? '🟢 Recharge ON — tap to turn OFF' : '🔴 Recharge OFF — tap to turn ON', 'rcx:t:p')],
-      [cb('⏰ Recharge schedule', 'rcx:home')],
-      [cb('🚫 Ban / Unban user', 'ab:search'), cb('📋 Banned list', 'bn:0')],
-      [cb('💰 Add / Deduct balance', 'ab:p:0')],
-      [cb('📊 Stats', 'ap:stats'), cb('👥 Users', 'ab:p:0')],
-      [cb('🛍 Orders', 'ap:o:0'), cb('💳 Deposits', 'ap:d:0')],
-      [cb('🧾 Transactions', 'ap:t:0'), cb('🗂 Products', 'pr:l:0')],
+      [cb('⏰ Recharge schedule', 'rcx:home'), cb('🧾 Transactions', 'ap:t:0')],
       [cb('📣 Broadcast', 'bc:start'), cb('📢 Channels', 'fc:home')],
+      [cb('🚫 Ban / Unban', 'ab:search'), cb('📋 Banned list', 'bn:0')],
       [cb('⚙️ Settings', 'se:home'), cb('📖 Commands', 'ap:help')],
     ]),
   );
@@ -100,28 +104,28 @@ export async function showPanel(ctx: BotContext) {
 export function statsText(s: Awaited<ReturnType<typeof getStats>>): string {
   const lines = [
     '📊 <b>Statistics</b>',
+    LINE,
+    `💰 Revenue: <b>${fmt(s.sales.revenue)}</b> • ${s.sales.orders} orders • ${s.sales.items} items`,
+    `📈 Last 24h: <b>${fmt(s.last24h.revenue)}</b> • ${s.last24h.orders} orders • ${s.last24h.items} items`,
+    `📥 Verified deposits: ${fmt(s.deposits.sum)} (${s.deposits.count})`,
+    `👥 Users: ${s.users} (banned: ${s.banned})`,
     '',
-    `📦 Items total: <b>${s.stock.total}</b>  🟢 Available: <b>${s.stock.available}</b>  🔴 Sold: <b>${s.stock.sold}</b>`,
+    `📦 Items: <b>${s.stock.total}</b> total • 🟢 ${s.stock.available} available • 🔴 ${s.stock.sold} sold`,
   ];
   if (s.perProduct.length) {
-    lines.push('', '<b>Products</b>');
-    for (const p of s.perProduct.slice(0, 25)) {
-      lines.push(`${p.active ? '🟢' : '⚪'} ${esc(p.name)} • ${fmt(p.price)} • ${p.available} left / ${p.sold} sold`);
+    lines.push('', '<b>🗂 By product</b>');
+    const ranked = [...s.perProduct].sort((a, b) => b.revenue - a.revenue || a.name.localeCompare(b.name));
+    for (const p of ranked.slice(0, 20)) {
+      lines.push(`${p.active ? '🟢' : '⚪'} <b>${esc(p.name)}</b> • ${fmt(p.price)}\n      ${p.available} left • ${p.sold} sold • revenue ${fmt(p.revenue)}`);
     }
-    if (s.perProduct.length > 25) lines.push(`… and ${s.perProduct.length - 25} more`);
+    if (ranked.length > 20) lines.push(`… and ${ranked.length - 20} more`);
   }
-  lines.push(
-    '',
-    `👥 Users: ${s.users} (banned: ${s.banned})`,
-    `📥 Verified deposits: ${s.deposits.count} • ${fmt(s.deposits.sum)}`,
-    `🛍 Orders: ${s.sales.orders} • ${s.sales.items} items • ${fmt(s.sales.revenue)}`,
-  );
   return lines.join('\n');
 }
 
 async function showStatsScreen(ctx: BotContext) {
   const s = await getStats();
-  await editOrReply(ctx, statsText(s), Markup.inlineKeyboard([[cb('🔄 Refresh', 'ap:stats')], panelBack]));
+  await editOrReply(ctx, statsText(s), Markup.inlineKeyboard([[cb('🔄 Refresh', 'ap:stats'), cb('🗂 Products', 'pr:l:0')], panelBack]));
 }
 
 function pager(prefix: string, page: number, count: number): Btn[] {

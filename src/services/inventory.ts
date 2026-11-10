@@ -13,9 +13,6 @@ export async function getStock(): Promise<Stock> {
   return total;
 }
 
-/** Highest quantity a user may order: what is in stock, optionally capped by the admin `maxQty` setting (0 = no cap). */
-export const maxBuyable = (available: number, maxQty: number): number => (maxQty > 0 ? Math.min(available, maxQty) : available);
-
 /**
  * Reserve (= mark as sold) `qty` items of ONE product for an order.
  * Every document is flipped with a filter on status:'available', which MongoDB applies atomically per document,

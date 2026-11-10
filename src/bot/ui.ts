@@ -2,15 +2,26 @@ import { Markup } from 'telegraf';
 import { BotContext } from './context';
 import { User } from '../models/User';
 import { Types } from 'mongoose';
+import { getCachedSettings } from '../services/settings';
+import { SETTING_DEFAULTS } from '../models/Setting';
 
 export const HTML = { parse_mode: 'HTML' as const, link_preview_options: { is_disabled: true } };
 
 export const esc = (s: string | number | undefined | null): string =>
   String(s ?? '').replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c] as string));
 
+/** Shop name from settings, HTML-escaped, ready to drop into a message. */
+export const shopName = (): string => esc(getCachedSettings().shopName?.trim() || SETTING_DEFAULTS.shopName);
+
+export const LINE = '━━━━━━━━━━━━━━';
+export const trunc = (t: string, n: number): string => (t.length > n ? `${t.slice(0, n - 1)}…` : t);
+
+/** "✅ 120 in stock" / "⚠️ Only 3 left" / "❌ Sold out" */
+export const stockLabel = (n: number): string => (n <= 0 ? '❌ Sold out' : n <= 10 ? `⚠️ Only ${n} left` : `✅ ${n} in stock`);
+
 export const BTN = {
   balance: '💰 Balance',
-  buy: '🛒 Buy',
+  buy: '🛍 Shop',
   recharge: '➕ Recharge',
   orders: '📦 My Orders',
   tx: '🧾 Transactions',

@@ -7,6 +7,8 @@ const schema = new mongoose_1.Schema({
     nameKey: { type: String, required: true, unique: true },
     description: { type: String, trim: true, maxlength: 500 },
     price: { type: Number, required: true, min: 0 },
+    minQty: { type: Number, default: 1, min: 1 },
+    maxQty: { type: Number, default: 0, min: 0 },
     active: { type: Boolean, default: true },
     columnCount: { type: Number, default: 0 },
     columns: { type: [String], default: [] },

@@ -24,6 +24,9 @@ const PAGE = 10;
 const pageArg = (a: string[]) => Math.max(1, parseInt(a[0] ?? '1', 10) || 1);
 
 const ALIASES: Record<string, string> = {
+  shop: 'shopname',
+  name: 'shopname',
+  lowstock: 'lowstockalert',
   bkash: 'bkashnumber',
   nagad: 'nagadnumber',
   currency: 'currencysymbol',
@@ -44,8 +47,9 @@ function show(d: SettingDef, v: unknown): string {
   if (d.secret) return v ? '••••••' : '-';
   let out: string;
   if (Array.isArray(v)) out = v.join(', ');
-  else if (d.key === 'price' || d.key === 'minRecharge' || d.key === 'maxRecharge') out = fmt(v as number);
-  else if (d.key === 'maxQty') out = v === 0 ? '0 (no cap, limited by stock)' : String(v);
+  else if (d.key === 'minRecharge' || d.key === 'maxRecharge') out = fmt(v as number);
+  else if (d.key === 'lowStockAlert') out = v === 0 ? 'off' : `${v} or fewer`;
+  else if (d.type === 'bool') out = v ? 'ON' : 'OFF';
   else out = String(v ?? '');
   if (out === '') return '-';
   return out.length > 70 ? `${out.slice(0, 70)}…` : out;
@@ -59,15 +63,19 @@ async function findUser(q: string | undefined): Promise<UserDoc | null> {
 
 // ---------- step-by-step settings editor ----------
 const GROUPS = [...new Set(SETTING_DEFS.map((d) => d.group))];
+const GROUP_ICON: Record<string, string> = { Shop: '🏪', Recharge: '💳', 'Force Join': '📢', Uploads: '📥', TrxID: '🔐' };
+const GROUP_NOTE: Record<string, string> = {
+  Shop: 'Store-wide options. Prices, descriptions and order limits are set per product in 🗂 Products.',
+};
 const optionsOf = (d: SettingDef): string[] => (d.type === 'bool' ? ['true', 'false'] : [...(d.options ?? [])]);
 const trunc = (t: string, n: number) => (t.length > n ? `${t.slice(0, n - 1)}…` : t);
 
 async function showGroups(ctx: BotContext) {
   await clearState(ctx.dbUser._id);
-  const rows = GROUPS.map((g, i) => [Markup.button.callback(`📂 ${g}`, `se:g:${i}`)]);
-  rows.push([Markup.button.callback('📢 Required channels', 'fc:home')]);
-  rows.push([Markup.button.callback('✖️ Close', 'se:x')]);
-  await editOrReply(ctx, '⚙️ <b>Edit settings</b>\n\nChoose a category:', Markup.inlineKeyboard(rows));
+  const rows = GROUPS.map((g, i) => [Markup.button.callback(`${GROUP_ICON[g] ?? '📂'} ${g}`, `se:g:${i}`)]);
+  rows.push([Markup.button.callback('📢 Required channels', 'fc:home'), Markup.button.callback('🗂 Products', 'pr:l:0')]);
+  rows.push([Markup.button.callback('⬅️ Admin panel', 'ap:home'), Markup.button.callback('✖️ Close', 'se:x')]);
+  await editOrReply(ctx, '⚙️ <b>Settings</b>\n\nChoose a category:', Markup.inlineKeyboard(rows));
 }
 
 async function showGroup(ctx: BotContext, gi: number) {
@@ -77,9 +85,10 @@ async function showGroup(ctx: BotContext, gi: number) {
   const s = await getSettings();
   const rows = SETTING_DEFS.map((d, i) => ({ d, i }))
     .filter(({ d }) => d.group === group)
-    .map(({ d, i }) => [Markup.button.callback(trunc(`${d.key}: ${show(d, s[d.key])}`, 60), `se:k:${i}`)]);
+    .map(({ d, i }) => [Markup.button.callback(trunc(`${d.label}: ${show(d, s[d.key])}`, 60), `se:k:${i}`)]);
   rows.push([Markup.button.callback('⬅️ Categories', 'se:home')]);
-  await editOrReply(ctx, `📂 <b>${esc(group)}</b>\n\nTap a setting to change it:`, Markup.inlineKeyboard(rows));
+  const note = GROUP_NOTE[group] ? `\n<i>${esc(GROUP_NOTE[group])}</i>\n` : '';
+  await editOrReply(ctx, `${GROUP_ICON[group] ?? '📂'} <b>${esc(group)}</b>${note}\nTap a setting to change it:`, Markup.inlineKeyboard(rows));
 }
 
 async function showKey(ctx: BotContext, idx: number) {
@@ -89,7 +98,7 @@ async function showKey(ctx: BotContext, idx: number) {
   const s = await getSettings();
   const opts = optionsOf(d);
   const lines = [
-    `✏️ <b>${esc(d.key)}</b>`,
+    `✏️ <b>${esc(d.label)}</b>  <code>${esc(d.key)}</code>`,
     esc(d.hint),
     '',
     `Current: <b>${esc(show(d, s[d.key]))}</b>`,
@@ -135,7 +144,7 @@ export async function handleSettingValueInput(ctx: BotContext, idx: number, text
   if (!(await applySetting(ctx, idx, text))) return;
   await clearState(ctx.dbUser._id);
   const s = await getSettings();
-  await ctx.reply(`✅ <code>${d.key}</code> saved: <b>${esc(show(d, s[d.key]))}</b>`, HTML);
+  await ctx.reply(`✅ <b>${esc(d.label)}</b> saved: <b>${esc(show(d, s[d.key]))}</b>`, HTML);
   await showGroup(ctx, GROUPS.indexOf(d.group));
 }
 
@@ -185,13 +194,12 @@ export function registerAdminHandlers(bot: Telegraf<BotContext>) {
 
   // ---------- stats / settings ----------
   bot.command('stats', adminOnly, async (ctx) => {
-    const [s, st] = await Promise.all([getStats(), getSettings()]);
-    await ctx.reply(statsText(s), HTML);
+    await ctx.reply(statsText(await getStats()), HTML);
   });
 
   bot.command('settings', adminOnly, async (ctx) => {
     const s = await getSettings();
-    const lines: string[] = ['⚙️ <b>Settings</b> (stored in database)'];
+    const lines: string[] = ['⚙️ <b>Settings</b> (stored in database)', '<i>Prices and order limits are per product: /products</i>'];
     let group = '';
     for (const d of SETTING_DEFS) {
       if (d.group !== group) {

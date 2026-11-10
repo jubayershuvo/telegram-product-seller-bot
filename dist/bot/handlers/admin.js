@@ -23,6 +23,9 @@ const money_1 = require("../../utils/money");
 const PAGE = 10;
 const pageArg = (a) => Math.max(1, parseInt(a[0] ?? '1', 10) || 1);
 const ALIASES = {
+    shop: 'shopname',
+    name: 'shopname',
+    lowstock: 'lowstockalert',
     bkash: 'bkashnumber',
     nagad: 'nagadnumber',
     currency: 'currencysymbol',
@@ -44,10 +47,12 @@ function show(d, v) {
     let out;
     if (Array.isArray(v))
         out = v.join(', ');
-    else if (d.key === 'price' || d.key === 'minRecharge' || d.key === 'maxRecharge')
+    else if (d.key === 'minRecharge' || d.key === 'maxRecharge')
         out = (0, money_1.fmt)(v);
-    else if (d.key === 'maxQty')
-        out = v === 0 ? '0 (no cap, limited by stock)' : String(v);
+    else if (d.key === 'lowStockAlert')
+        out = v === 0 ? 'off' : `${v} or fewer`;
+    else if (d.type === 'bool')
+        out = v ? 'ON' : 'OFF';
     else
         out = String(v ?? '');
     if (out === '')
@@ -63,14 +68,18 @@ async function findUser(q) {
 }
 // ---------- step-by-step settings editor ----------
 const GROUPS = [...new Set(Setting_1.SETTING_DEFS.map((d) => d.group))];
+const GROUP_ICON = { Shop: '🏪', Recharge: '💳', 'Force Join': '📢', Uploads: '📥', TrxID: '🔐' };
+const GROUP_NOTE = {
+    Shop: 'Store-wide options. Prices, descriptions and order limits are set per product in 🗂 Products.',
+};
 const optionsOf = (d) => (d.type === 'bool' ? ['true', 'false'] : [...(d.options ?? [])]);
 const trunc = (t, n) => (t.length > n ? `${t.slice(0, n - 1)}…` : t);
 async function showGroups(ctx) {
     await (0, ui_1.clearState)(ctx.dbUser._id);
-    const rows = GROUPS.map((g, i) => [telegraf_1.Markup.button.callback(`📂 ${g}`, `se:g:${i}`)]);
-    rows.push([telegraf_1.Markup.button.callback('📢 Required channels', 'fc:home')]);
-    rows.push([telegraf_1.Markup.button.callback('✖️ Close', 'se:x')]);
-    await (0, ui_1.editOrReply)(ctx, '⚙️ <b>Edit settings</b>\n\nChoose a category:', telegraf_1.Markup.inlineKeyboard(rows));
+    const rows = GROUPS.map((g, i) => [telegraf_1.Markup.button.callback(`${GROUP_ICON[g] ?? '📂'} ${g}`, `se:g:${i}`)]);
+    rows.push([telegraf_1.Markup.button.callback('📢 Required channels', 'fc:home'), telegraf_1.Markup.button.callback('🗂 Products', 'pr:l:0')]);
+    rows.push([telegraf_1.Markup.button.callback('⬅️ Admin panel', 'ap:home'), telegraf_1.Markup.button.callback('✖️ Close', 'se:x')]);
+    await (0, ui_1.editOrReply)(ctx, '⚙️ <b>Settings</b>\n\nChoose a category:', telegraf_1.Markup.inlineKeyboard(rows));
 }
 async function showGroup(ctx, gi) {
     const group = GROUPS[gi];
@@ -80,9 +89,10 @@ async function showGroup(ctx, gi) {
     const s = await (0, settings_1.getSettings)();
     const rows = Setting_1.SETTING_DEFS.map((d, i) => ({ d, i }))
         .filter(({ d }) => d.group === group)
-        .map(({ d, i }) => [telegraf_1.Markup.button.callback(trunc(`${d.key}: ${show(d, s[d.key])}`, 60), `se:k:${i}`)]);
+        .map(({ d, i }) => [telegraf_1.Markup.button.callback(trunc(`${d.label}: ${show(d, s[d.key])}`, 60), `se:k:${i}`)]);
     rows.push([telegraf_1.Markup.button.callback('⬅️ Categories', 'se:home')]);
-    await (0, ui_1.editOrReply)(ctx, `📂 <b>${(0, ui_1.esc)(group)}</b>\n\nTap a setting to change it:`, telegraf_1.Markup.inlineKeyboard(rows));
+    const note = GROUP_NOTE[group] ? `\n<i>${(0, ui_1.esc)(GROUP_NOTE[group])}</i>\n` : '';
+    await (0, ui_1.editOrReply)(ctx, `${GROUP_ICON[group] ?? '📂'} <b>${(0, ui_1.esc)(group)}</b>${note}\nTap a setting to change it:`, telegraf_1.Markup.inlineKeyboard(rows));
 }
 async function showKey(ctx, idx) {
     const d = Setting_1.SETTING_DEFS[idx];
@@ -92,7 +102,7 @@ async function showKey(ctx, idx) {
     const s = await (0, settings_1.getSettings)();
     const opts = optionsOf(d);
     const lines = [
-        `✏️ <b>${(0, ui_1.esc)(d.key)}</b>`,
+        `✏️ <b>${(0, ui_1.esc)(d.label)}</b>  <code>${(0, ui_1.esc)(d.key)}</code>`,
         (0, ui_1.esc)(d.hint),
         '',
         `Current: <b>${(0, ui_1.esc)(show(d, s[d.key]))}</b>`,
@@ -141,7 +151,7 @@ async function handleSettingValueInput(ctx, idx, text) {
         return;
     await (0, ui_1.clearState)(ctx.dbUser._id);
     const s = await (0, settings_1.getSettings)();
-    await ctx.reply(`✅ <code>${d.key}</code> saved: <b>${(0, ui_1.esc)(show(d, s[d.key]))}</b>`, ui_1.HTML);
+    await ctx.reply(`✅ <b>${(0, ui_1.esc)(d.label)}</b> saved: <b>${(0, ui_1.esc)(show(d, s[d.key]))}</b>`, ui_1.HTML);
     await showGroup(ctx, GROUPS.indexOf(d.group));
 }
 function registerSettingsEditor(bot) {
@@ -191,20 +201,11 @@ function registerAdminHandlers(bot) {
     registerSettingsEditor(bot);
     // ---------- stats / settings ----------
     bot.command('stats', auth_1.adminOnly, async (ctx) => {
-        const [s, st] = await Promise.all([(0, stats_1.getStats)(), (0, settings_1.getSettings)()]);
-        await ctx.reply((0, adminPanel_2.statsText)(s), ui_1.HTML);
-    });
-    bot.command('price', auth_1.adminOnly, async (ctx) => ctx.reply(`💵 Default price for new products: <b>${(0, money_1.fmt)((await (0, settings_1.getSettings)()).price)}</b>\nEach product has its own price: /products`, ui_1.HTML));
-    bot.command('setprice', auth_1.adminOnly, async (ctx) => {
-        const amt = (0, money_1.parseAmount)((0, ui_1.commandArgs)(ctx)[0] ?? '');
-        if (!amt)
-            return ctx.reply('Usage: /setprice <amount>   (default price for NEW products) e.g. /setprice 5.50');
-        await (0, settings_1.setSetting)('price', amt);
-        await ctx.reply(`✅ Default price for new products set to ${(0, money_1.fmt)(amt)}. (Change a product's own price in /products.)`);
+        await ctx.reply((0, adminPanel_2.statsText)(await (0, stats_1.getStats)()), ui_1.HTML);
     });
     bot.command('settings', auth_1.adminOnly, async (ctx) => {
         const s = await (0, settings_1.getSettings)();
-        const lines = ['⚙️ <b>Settings</b> (stored in database)'];
+        const lines = ['⚙️ <b>Settings</b> (stored in database)', '<i>Prices and order limits are per product: /products</i>'];
         let group = '';
         for (const d of Setting_1.SETTING_DEFS) {
             if (d.group !== group) {

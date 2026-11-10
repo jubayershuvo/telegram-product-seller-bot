@@ -35,10 +35,11 @@ function registerTextRouter(bot) {
                 return (0, adminPanel_1.handleRechargeHoursInput)(ctx, text);
             case 'awaiting_product_name':
             case 'awaiting_product_price':
+            case 'awaiting_product_desc':
             case 'awaiting_product_edit':
                 return (0, products_1.handleProductInput)(ctx, st.name, text);
             case 'awaiting_product_file':
-                return ctx.reply('📥 Please send the .xlsx or .csv <b>file</b> now (or /cancel).', { parse_mode: 'HTML' });
+                return ctx.reply('📥 Please send the .xlsx or .csv <b>file</b> now (or /cancel).', { parse_mode: 'HTML', link_preview_options: { is_disabled: true } });
             case 'awaiting_product_pick':
             case 'awaiting_header_choice':
                 return ctx.reply('👆 Please use the buttons above to continue (or /cancel).');

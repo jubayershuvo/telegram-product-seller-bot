@@ -7,18 +7,21 @@ import { Schema, model } from 'mongoose';
  * - Admins change values from Telegram with /settings, /set and /resetsetting.
  * - .env only keeps secrets / bootstrap values (BOT_TOKEN, MONGODB_URI, ADMIN_IDS, ...).
  *
+ * Only STORE-WIDE options live here. Everything that belongs to one product (price, description,
+ * min/max quantity per order, delivery format, visibility) is managed per product in /products.
+ *
  * Money values may have up to 2 decimals (e.g. 0.85, 4.4).
  * Payments are verified from synced SMS (src/lib/payment-verifier.ts, key SMSSYNC_API_KEY in .env).
  */
 export interface SettingsShape {
-  // ----- shop -----
+  // ----- shop (store-wide) -----
+  /** shown in the welcome screen, catalog and admin panel */
+  shopName: string;
   currencySymbol: string;
   timezone: string;
-  /** default price pre-filled when creating a product (every product has its own price) */
-  price: number;
-  /** max items per order. 0 = no cap: the limit is simply what is in stock */
-  maxQty: number;
   support: string;
+  /** admins get an alert when a product's stock drops to this number or below. 0 = alerts off */
+  lowStockAlert: number;
   // ----- recharge -----
   /** master switch: admin can turn recharge on/off for everyone at any time */
   rechargeEnabled: boolean;
@@ -44,11 +47,11 @@ export interface SettingsShape {
 }
 
 export const SETTING_DEFAULTS: SettingsShape = {
+  shopName: 'Digital Store',
   currencySymbol: '৳',
   timezone: 'Asia/Dhaka',
-  price: 5,
-  maxQty: 0,
   support: '',
+  lowStockAlert: 5,
 
   rechargeEnabled: true,
   rechargeScheduleEnabled: false,
@@ -85,6 +88,8 @@ export interface SettingDef {
   key: keyof SettingsShape;
   type: SettingType;
   group: string;
+  /** friendly name shown in the settings editor */
+  label: string;
   hint: string;
   /** hidden in /settings output and the /set message is deleted */
   secret?: boolean;
@@ -94,28 +99,28 @@ export interface SettingDef {
 }
 
 export const SETTING_DEFS: SettingDef[] = [
-  { key: 'currencySymbol', type: 'string', group: 'Shop', hint: 'e.g. ৳' },
-  { key: 'timezone', type: 'timezone', group: 'Shop', hint: 'IANA name, e.g. Asia/Dhaka' },
-  { key: 'maxQty', type: 'int', group: 'Shop', hint: 'max items per order, 0 = limited only by stock', min: 0, max: 10_000_000 },
-  { key: 'support', type: 'string', group: 'Shop', hint: '@username or link' },
+  { key: 'shopName', type: 'string', group: 'Shop', label: 'Shop name', hint: 'shown to customers, e.g. Digital Store', max: 40 },
+  { key: 'currencySymbol', type: 'string', group: 'Shop', label: 'Currency symbol', hint: 'e.g. ৳', max: 5 },
+  { key: 'timezone', type: 'timezone', group: 'Shop', label: 'Timezone', hint: 'IANA name, e.g. Asia/Dhaka' },
+  { key: 'support', type: 'string', group: 'Shop', label: 'Support contact', hint: '@username or link' },
+  { key: 'lowStockAlert', type: 'int', group: 'Shop', label: 'Low-stock alert at', hint: 'alert admins when a product has this many items left or fewer, 0 = off', min: 0, max: 1_000_000 },
 
-  { key: 'rechargeEnabled', type: 'bool', group: 'Recharge', hint: 'master switch: true = recharge open, false = closed for all users' },
-  { key: 'rechargeScheduleEnabled', type: 'bool', group: 'Recharge', hint: 'true = recharge only open during the daily hours below' },
-  { key: 'rechargeOpenTime', type: 'time', group: 'Recharge', hint: 'daily opening time, HH:mm (24h), e.g. 09:00' },
-  { key: 'rechargeCloseTime', type: 'time', group: 'Recharge', hint: 'daily closing time, HH:mm (24h), e.g. 22:00' },
-  { key: 'bkashNumber', type: 'string', group: 'Recharge', hint: 'bKash receiving number' },
-  { key: 'nagadNumber', type: 'string', group: 'Recharge', hint: 'Nagad receiving number' },
-  { key: 'minRecharge', type: 'money', group: 'Recharge', hint: 'minimum recharge' },
-  { key: 'maxRecharge', type: 'money', group: 'Recharge', hint: 'maximum recharge' },
-  { key: 'rechargePresets', type: 'numlist', group: 'Recharge', hint: 'quick amounts, e.g. 50,100,200' },
+  { key: 'rechargeEnabled', type: 'bool', group: 'Recharge', label: 'Recharge enabled', hint: 'master switch: true = recharge open, false = closed for all users' },
+  { key: 'rechargeScheduleEnabled', type: 'bool', group: 'Recharge', label: 'Daily schedule', hint: 'true = recharge only open during the daily hours below' },
+  { key: 'rechargeOpenTime', type: 'time', group: 'Recharge', label: 'Opens at', hint: 'daily opening time, HH:mm (24h), e.g. 09:00' },
+  { key: 'rechargeCloseTime', type: 'time', group: 'Recharge', label: 'Closes at', hint: 'daily closing time, HH:mm (24h), e.g. 22:00' },
+  { key: 'bkashNumber', type: 'string', group: 'Recharge', label: 'bKash number', hint: 'bKash receiving number' },
+  { key: 'nagadNumber', type: 'string', group: 'Recharge', label: 'Nagad number', hint: 'Nagad receiving number' },
+  { key: 'minRecharge', type: 'money', group: 'Recharge', label: 'Minimum recharge', hint: 'minimum recharge' },
+  { key: 'maxRecharge', type: 'money', group: 'Recharge', label: 'Maximum recharge', hint: 'maximum recharge' },
+  { key: 'rechargePresets', type: 'numlist', group: 'Recharge', label: 'Quick amounts', hint: 'quick amounts, e.g. 50,100,200' },
 
-  { key: 'forceJoinEnabled', type: 'bool', group: 'Force Join', hint: 'true = users must join all required channels before using the bot' },
+  { key: 'forceJoinEnabled', type: 'bool', group: 'Force Join', label: 'Force join', hint: 'true = users must join all required channels before using the bot' },
 
-  { key: 'maxUploadMb', type: 'int', group: 'Uploads', hint: 'max .xlsx / .csv upload size in MB (Telegram limit 20)', min: 1, max: 20 },
+  { key: 'maxUploadMb', type: 'int', group: 'Uploads', label: 'Max upload size (MB)', hint: 'max .xlsx / .csv upload size in MB (Telegram limit 20)', min: 1, max: 20 },
 
-  { key: 'trxIdRegex', type: 'regex', group: 'TrxID', hint: 'regular expression a TrxID must match' },
-  { key: 'maxFailedTrxPerHour', type: 'int', group: 'TrxID', hint: 'failed attempts per user per hour', min: 1, max: 1000 },
-
+  { key: 'trxIdRegex', type: 'regex', group: 'TrxID', label: 'TrxID pattern', hint: 'regular expression a TrxID must match' },
+  { key: 'maxFailedTrxPerHour', type: 'int', group: 'TrxID', label: 'Failed TrxID limit / hour', hint: 'failed attempts per user per hour', min: 1, max: 1000 },
 ];
 
 export interface ISetting {
