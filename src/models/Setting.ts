@@ -15,6 +15,10 @@ import { Schema, model } from 'mongoose';
  */
 export interface SettingsShape {
   // ----- shop (store-wide) -----
+  /** logo emoji shown before the shop name everywhere. Empty = no emoji. Managed from Settings -> Shop -> Shop logo */
+  shopLogo: string;
+  /** optional big logo IMAGE as JSON {"type","fileId"} (photo / GIF / sticker), shown with the welcome message. Empty = none */
+  shopLogoMedia: string;
   /** shown in the welcome screen, catalog and admin panel */
   shopName: string;
   currencySymbol: string;
@@ -47,6 +51,8 @@ export interface SettingsShape {
 }
 
 export const SETTING_DEFAULTS: SettingsShape = {
+  shopLogo: '🏪',
+  shopLogoMedia: '',
   shopName: 'Digital Store',
   currencySymbol: '৳',
   timezone: 'Asia/Dhaka',
@@ -96,9 +102,13 @@ export interface SettingDef {
   options?: readonly string[];
   min?: number;
   max?: number;
+  /** not shown in the generic settings editor / /settings / /set (has its own editor) */
+  hidden?: boolean;
 }
 
 export const SETTING_DEFS: SettingDef[] = [
+  { key: 'shopLogo', type: 'string', group: 'Shop', label: 'Shop logo', hint: 'any emoji shown before the shop name everywhere, e.g. 🏪 🛒 🔥. Send - to remove it', max: 32, hidden: true },
+  { key: 'shopLogoMedia', type: 'json', group: 'Shop', label: 'Shop logo image', hint: 'logo image / GIF / sticker (use the Shop logo editor)', hidden: true },
   { key: 'shopName', type: 'string', group: 'Shop', label: 'Shop name', hint: 'shown to customers, e.g. Digital Store', max: 40 },
   { key: 'currencySymbol', type: 'string', group: 'Shop', label: 'Currency symbol', hint: 'e.g. ৳', max: 5 },
   { key: 'timezone', type: 'timezone', group: 'Shop', label: 'Timezone', hint: 'IANA name, e.g. Asia/Dhaka' },

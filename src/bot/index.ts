@@ -9,6 +9,7 @@ import { registerBroadcastHandlers } from './handlers/broadcast';
 import { registerShopHandlers } from './handlers/shop';
 import { registerRechargeHandlers } from './handlers/recharge';
 import { registerAdminHandlers } from './handlers/admin';
+import { registerLogoHandlers } from './handlers/logo';
 import { registerTextRouter } from './handlers/text';
 import { logger } from '../utils/logger';
 import { safeError } from '../utils/errors';
@@ -53,6 +54,7 @@ export function createBot(): Telegraf<BotContext> {
   // these two listen for the admin's next message (forwarded channel post / broadcast content), so they go first
   registerChannelHandlers(bot);
   registerBroadcastHandlers(bot);
+  registerLogoHandlers(bot); // logo image upload: must run before the product file (document) handler
   registerAdminHandlers(bot);
   registerShopHandlers(bot);
   registerRechargeHandlers(bot);

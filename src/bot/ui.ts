@@ -13,6 +13,15 @@ export const esc = (s: string | number | undefined | null): string =>
 /** Shop name from settings, HTML-escaped, ready to drop into a message. */
 export const shopName = (): string => esc(getCachedSettings().shopName?.trim() || SETTING_DEFAULTS.shopName);
 
+/** Shop logo emoji from settings, HTML-escaped. Empty string = admin removed the logo. */
+export const shopLogo = (): string => {
+  const logo = getCachedSettings().shopLogo;
+  return esc(typeof logo === 'string' ? logo.trim() : SETTING_DEFAULTS.shopLogo);
+};
+
+/** "🏪 Digital Store" - logo + shop name, the header used on every screen. */
+export const shopTitle = (): string => [shopLogo(), shopName()].filter(Boolean).join(' ');
+
 export const LINE = '━━━━━━━━━━━━━━';
 export const trunc = (t: string, n: number): string => (t.length > n ? `${t.slice(0, n - 1)}…` : t);
 

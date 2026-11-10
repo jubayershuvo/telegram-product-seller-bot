@@ -4,6 +4,7 @@ import { registerAdminPanel, showPanel, showUserPicker } from './adminPanel';
 import { registerProductHandlers } from './products';
 import { HTML, clearState, commandArgs, editOrReply, esc, setState, shortId, userLabel } from '../ui';
 import { adminOnly } from '../middlewares/auth';
+import { showLogoEditor } from './logo';
 import { env } from '../../config/env';
 import { getSettings, setSetting, resetSetting } from '../../services/settings';
 import { parseSettingInput, crossCheck } from '../../services/settingsParser';
@@ -40,7 +41,7 @@ function findDef(raw: string | undefined): SettingDef | undefined {
   if (!raw) return undefined;
   const k = raw.toLowerCase().replace(/[^a-z0-9]/g, '');
   const name = ALIASES[k] ?? k;
-  return SETTING_DEFS.find((d) => d.key.toLowerCase() === name);
+  return SETTING_DEFS.find((d) => !d.hidden && d.key.toLowerCase() === name);
 }
 
 function show(d: SettingDef, v: unknown): string {
@@ -84,8 +85,9 @@ async function showGroup(ctx: BotContext, gi: number) {
   await clearState(ctx.dbUser._id);
   const s = await getSettings();
   const rows = SETTING_DEFS.map((d, i) => ({ d, i }))
-    .filter(({ d }) => d.group === group)
+    .filter(({ d }) => d.group === group && !d.hidden)
     .map(({ d, i }) => [Markup.button.callback(trunc(`${d.label}: ${show(d, s[d.key])}`, 60), `se:k:${i}`)]);
+  if (group === 'Shop') rows.push([Markup.button.callback('🖼 Shop logo (emoji / image)', 'lg:home')]);
   rows.push([Markup.button.callback('⬅️ Categories', 'se:home')]);
   const note = GROUP_NOTE[group] ? `\n<i>${esc(GROUP_NOTE[group])}</i>\n` : '';
   await editOrReply(ctx, `${GROUP_ICON[group] ?? '📂'} <b>${esc(group)}</b>${note}\nTap a setting to change it:`, Markup.inlineKeyboard(rows));
@@ -202,6 +204,7 @@ export function registerAdminHandlers(bot: Telegraf<BotContext>) {
     const lines: string[] = ['⚙️ <b>Settings</b> (stored in database)', '<i>Prices and order limits are per product: /products</i>'];
     let group = '';
     for (const d of SETTING_DEFS) {
+      if (d.hidden) continue;
       if (d.group !== group) {
         group = d.group;
         lines.push('', `<b>${esc(group)}</b>`);

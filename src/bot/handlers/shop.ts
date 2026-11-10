@@ -1,8 +1,9 @@
 import { Markup, Telegraf } from 'telegraf';
 import { Types } from 'mongoose';
 import { BotContext } from '../context';
-import { BTN, HTML, LINE, clearState, editOrReply, esc, mainMenu, setState, shopName, shortId, stockLabel, trunc } from '../ui';
+import { BTN, HTML, LINE, clearState, editOrReply, esc, mainMenu, setState, shopName, shopTitle, shopLogo, shortId, stockLabel, trunc } from '../ui';
 import { getSettings } from '../../services/settings';
+import { replyWithLogo } from './logo';
 import { getOrderRows } from '../../services/inventory';
 import { buyRange, describeLimits, getProduct, getProductStock, getStockMap } from '../../services/catalog';
 import { purchaseProduct } from '../../services/purchase';
@@ -30,7 +31,7 @@ async function showHelp(ctx: BotContext) {
   const s = await getSettings();
   await ctx.reply(
     [
-      `ℹ️ <b>How ${shopName()} works</b>`,
+      `${shopLogo() || 'ℹ️'} <b>How ${shopName()} works</b>`,
       LINE,
       '1️⃣ ➕ <b>Recharge</b> your wallet (bKash / Nagad)',
       '2️⃣ 🛍 <b>Shop</b> — pick a product and a quantity',
@@ -68,7 +69,7 @@ async function showBuy(ctx: BotContext, page = 0) {
     getStockMap(),
   ]);
   if (!products.length) {
-    return editOrReply(ctx, `🛍 <b>${shopName()}</b>\n\n😔 No products are available right now. Please check back soon.`);
+    return editOrReply(ctx, `<b>${shopTitle()}</b>\n\n😔 No products are available right now. Please check back soon.`);
   }
 
   const pages = Math.max(1, Math.ceil(products.length / PAGE));
@@ -99,7 +100,7 @@ async function showBuy(ctx: BotContext, page = 0) {
   rows.push([Markup.button.callback('➕ Recharge', 'rc:start'), Markup.button.callback('📦 My orders', 'orders:p:0')]);
   await editOrReply(
     ctx,
-    [`🛍 <b>${shopName()}</b>`, `💰 Your balance: <b>${fmt(u.balance)}</b>`, LINE, cards.join('\n\n'), '', 'Tap a product to see details 👇'].join('\n'),
+    [`<b>${shopTitle()}</b>`, `💰 Your balance: <b>${fmt(u.balance)}</b>`, LINE, cards.join('\n\n'), '', 'Tap a product to see details 👇'].join('\n'),
     Markup.inlineKeyboard(rows),
   );
 }
@@ -376,9 +377,9 @@ export async function showWelcome(ctx: BotContext) {
   const [visible, stockMap, u] = await Promise.all([Product.find({ active: true, columnCount: { $gt: 0 } }).select('_id').lean(), getStockMap(), freshUser(ctx)]);
   const products = visible.length;
   const inStock = visible.reduce((n, p) => n + (stockMap.get(String(p._id))?.available ?? 0), 0);
-  await ctx.reply(
+  await replyWithLogo(ctx,
     [
-      `🏪 <b>${shopName()}</b>`,
+      `<b>${shopTitle()}</b>`,
       LINE,
       `👋 Welcome, <b>${esc(ctx.from?.first_name)}</b>!`,
       '',
@@ -392,7 +393,7 @@ export async function showWelcome(ctx: BotContext) {
       '',
       'Use the menu below 👇',
     ].join('\n'),
-    { ...HTML, ...mainMenu(ctx.isAdmin) },
+    mainMenu(ctx.isAdmin),
   );
 }
 

@@ -5,6 +5,7 @@ import { handleSettingValueInput } from './admin';
 import { handleBalanceAmountInput, handleRechargeHoursInput, handleUserSearchInput } from './adminPanel';
 import { handleTrxIdInput } from './recharge';
 import { handleChannelInput } from './channels';
+import { handleLogoText } from './logo';
 import { handleProductInput } from './products';
 import { clearState, mainMenu } from '../ui';
 
@@ -50,6 +51,8 @@ export function registerTextRouter(bot: Telegraf<BotContext>) {
         // normally consumed by the broadcast listener; reaching here means the state is stale
         await clearState(ctx.dbUser._id);
         return ctx.reply('Broadcast cancelled. Use /broadcast to start again.', mainMenu(ctx.isAdmin));
+      case 'awaiting_shop_logo':
+        return handleLogoText(ctx, text);
       case 'awaiting_setting_value':
         return handleSettingValueInput(ctx, Number(st.data?.idx), text);
       default:

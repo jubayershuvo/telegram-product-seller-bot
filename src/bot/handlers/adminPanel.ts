@@ -1,7 +1,7 @@
 import { Markup, Telegraf } from 'telegraf';
 import { Types } from 'mongoose';
 import { BotContext } from '../context';
-import { BTN, HTML, LINE, clearState, commandArgs, editOrReply, esc, setState, shopName, shortId, userLabel } from '../ui';
+import { BTN, HTML, LINE, clearState, commandArgs, editOrReply, esc, setState, shopTitle, shortId, userLabel } from '../ui';
 import { adminOnly } from '../middlewares/auth';
 import { env } from '../../config/env';
 import { getSettings } from '../../services/settings';
@@ -38,7 +38,7 @@ Send an <b>.xlsx</b> or <b>.csv</b> file to the bot → choose the product → r
 /settings – show all settings
 /set &lt;key&gt; &lt;value&gt; – change a setting (use <code>-</code> as value to clear text/list settings)
 /resetsetting &lt;key&gt; – restore the default value
-Keys: ${SETTING_DEFS.map((d) => d.key).join(', ')}
+Keys: ${SETTING_DEFS.filter((d) => !d.hidden).map((d) => d.key).join(', ')}
 
 <b>Channels &amp; broadcast</b>
 /channels – required channels (add / remove with buttons; also in ⚙️ Settings)
@@ -79,7 +79,7 @@ export async function showPanel(ctx: BotContext) {
   await editOrReply(
     ctx,
     [
-      `🛠 <b>${shopName()} — Admin</b>`,
+      `🛠 <b>${shopTitle()} — Admin</b>`,
       LINE,
       `📈 <b>Last 24h:</b> ${st.last24h.orders} orders • ${st.last24h.items} items • <b>${fmt(st.last24h.revenue)}</b>`,
       `🗂 Products: <b>${st.perProduct.length}</b>${attention ? `  (${attention})` : ''}`,
